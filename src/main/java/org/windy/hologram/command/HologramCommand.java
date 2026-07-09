@@ -4,6 +4,7 @@ import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.Player;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import org.windy.hologram.config.HologramLoader;
 import org.windy.hologram.hologram.Hologram;
 import org.windy.hologram.hologram.HologramManager;
 import org.windy.hologram.tracker.PlayerTracker;
@@ -15,16 +16,19 @@ import java.util.UUID;
 
 /**
  * /holo 命令实现。
- * <p>支持创建、删除、添加行、列出等操作。
+ * <p>支持创建、删除、添加行、列出、保存等操作。
  */
 public class HologramCommand implements SimpleCommand {
 
     private final HologramManager hologramManager;
     private final PlayerTracker playerTracker;
+    private final HologramLoader hologramLoader;
 
-    public HologramCommand(HologramManager hologramManager, PlayerTracker playerTracker) {
+    public HologramCommand(HologramManager hologramManager, PlayerTracker playerTracker,
+                           HologramLoader hologramLoader) {
         this.hologramManager = hologramManager;
         this.playerTracker = playerTracker;
+        this.hologramLoader = hologramLoader;
     }
 
     @Override
@@ -44,6 +48,7 @@ public class HologramCommand implements SimpleCommand {
             case "setline" -> handleSetLine(source, args);
             case "removeline" -> handleRemoveLine(source, args);
             case "list" -> handleList(source);
+            case "save" -> handleSave(source, args);
             case "reload" -> handleReload(source);
             default -> sendHelp(source);
         }
@@ -191,9 +196,30 @@ public class HologramCommand implements SimpleCommand {
         }
     }
 
+    private void handleSave(CommandSource source, String[] args) {
+        if (args.length < 2) {
+            msg(source, "§c用法: /holo save <名称>");
+            return;
+        }
+
+        String name = args[1];
+        Hologram hologram = hologramManager.getHologram(name);
+        if (hologram == null) {
+            msg(source, "§c悬浮字 '" + name + "' 不存在");
+            return;
+        }
+
+        hologramLoader.save(hologram);
+        msg(source, "§a已保存悬浮字 '" + name + "' 到配置文件");
+    }
+
     private void handleReload(CommandSource source) {
-        // TODO: 重新加载配置
-        msg(source, "§a配置已重新加载");
+        // 重新加载所有悬浮字
+        for (Hologram hologram : hologramManager.getAllHolograms()) {
+            hologram.destroy();
+        }
+        hologramLoader.loadAll(hologramManager);
+        msg(source, "§a配置已重新加载，共 " + hologramManager.getAllHolograms().size() + " 个悬浮字");
     }
 
     private void sendHelp(CommandSource source) {
@@ -204,6 +230,7 @@ public class HologramCommand implements SimpleCommand {
         msg(source, "§e/holo setline <名称> <行号> <文本> §7- 设置某行");
         msg(source, "§e/holo removeline <名称> <行号> §7- 删除某行");
         msg(source, "§e/holo list §7- 列出所有悬浮字");
+        msg(source, "§e/holo save <名称> §7- 保存悬浮字到配置文件");
         msg(source, "§e/holo reload §7- 重新加载配置");
     }
 

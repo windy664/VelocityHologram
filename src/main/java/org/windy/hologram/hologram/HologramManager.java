@@ -1,6 +1,8 @@
 package org.windy.hologram.hologram;
 
+import org.windy.hologram.action.ClickHandler;
 import org.windy.hologram.api.IHologram;
+import org.windy.hologram.placeholder.PlaceholderManager;
 import org.windy.hologram.tracker.PlayerState;
 import org.windy.hologram.tracker.PlayerTracker;
 
@@ -12,16 +14,25 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 悬浮字管理器。
  * <p>管理所有悬浮字的生命周期，协调 PlayerTracker 进行可见性计算。
- * <p>使用空间分区优化：按服务器分组，只计算同一服务器内的悬浮字。
+ * <p>支持动画更新和空间分区优化。
  */
 public class HologramManager {
 
     private final Map<String, Hologram> holograms = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Hologram>> byServer = new ConcurrentHashMap<>();
     private final PlayerTracker playerTracker;
+    private final ClickHandler clickHandler;
+    private final PlaceholderManager placeholderManager;
 
-    public HologramManager(PlayerTracker playerTracker) {
+    // 动画更新计数器
+    private int animationTickCounter = 0;
+    private static final int ANIMATION_UPDATE_INTERVAL = 2; // 每 2 tick 更新一次动画
+
+    public HologramManager(PlayerTracker playerTracker, ClickHandler clickHandler,
+                           PlaceholderManager placeholderManager) {
         this.playerTracker = playerTracker;
+        this.clickHandler = clickHandler;
+        this.placeholderManager = placeholderManager;
     }
 
     /**
@@ -30,7 +41,8 @@ public class HologramManager {
     public Hologram createHologram(String name, double x, double y, double z,
                                     String dimension, String server) {
         Hologram hologram = new Hologram(name,
-                new IHologram.HologramPos(x, y, z, dimension, server));
+                new IHologram.HologramPos(x, y, z, dimension, server),
+                clickHandler, placeholderManager);
         holograms.put(name, hologram);
 
         // 按服务器分组
@@ -114,8 +126,9 @@ public class HologramManager {
                 double dz = pos.z() - state.getZ();
                 double distanceSq = dx * dx + dy * dy + dz * dz;
 
-                // 视距 48 格（48^2 = 2304）
-                if (distanceSq <= 2304) {
+                // 视距检查
+                double viewDistSq = hologram.getViewDistance() * hologram.getViewDistance();
+                if (distanceSq <= viewDistSq) {
                     if (!hologram.isObserver(playerId)) {
                         hologram.showTo(playerId);
                     }
@@ -134,6 +147,21 @@ public class HologramManager {
                         hologram.hideFrom(playerId);
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * 定时调用：更新动画。
+     * <p>比可见性更新更频繁（每 2 tick）。
+     */
+    public void tickAnimation() {
+        animationTickCounter++;
+        if (animationTickCounter >= ANIMATION_UPDATE_INTERVAL) {
+            animationTickCounter = 0;
+
+            for (Hologram hologram : holograms.values()) {
+                hologram.tickAnimation();
             }
         }
     }
