@@ -12,10 +12,12 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 悬浮字管理器。
  * <p>管理所有悬浮字的生命周期，协调 PlayerTracker 进行可见性计算。
+ * <p>使用空间分区优化：按服务器分组，只计算同一服务器内的悬浮字。
  */
 public class HologramManager {
 
     private final Map<String, Hologram> holograms = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, Hologram>> byServer = new ConcurrentHashMap<>();
     private final PlayerTracker playerTracker;
 
     public HologramManager(PlayerTracker playerTracker) {
@@ -30,6 +32,11 @@ public class HologramManager {
         Hologram hologram = new Hologram(name,
                 new IHologram.HologramPos(x, y, z, dimension, server));
         holograms.put(name, hologram);
+
+        // 按服务器分组
+        byServer.computeIfAbsent(server, k -> new ConcurrentHashMap<>())
+                .put(name, hologram);
+
         return hologram;
     }
 
@@ -48,31 +55,53 @@ public class HologramManager {
     }
 
     /**
+     * 获取指定服务器的悬浮字。
+     */
+    public Collection<Hologram> getHologramsByServer(String server) {
+        Map<String, Hologram> serverHolograms = byServer.get(server);
+        return serverHolograms != null ? serverHolograms.values() : java.util.Collections.emptyList();
+    }
+
+    /**
      * 删除悬浮字。
      */
     public void removeHologram(String name) {
         Hologram hologram = holograms.remove(name);
         if (hologram != null) {
             hologram.destroy();
+            // 从服务器分组中移除
+            Map<String, Hologram> serverHolograms = byServer.get(hologram.getPosition().server());
+            if (serverHolograms != null) {
+                serverHolograms.remove(name);
+            }
         }
     }
 
     /**
      * 定时调用：更新所有悬浮字的可见性。
-     * <p>由异步调度器每 500ms 调用一次。
+     * <p>优化：只计算同一服务器内的悬浮字。
      */
     public void tickVisibility() {
-        for (Hologram hologram : holograms.values()) {
-            IHologram.HologramPos pos = hologram.getPosition();
+        for (Map.Entry<UUID, PlayerState> entry : playerTracker.getAllStates().entrySet()) {
+            UUID playerId = entry.getKey();
+            PlayerState state = entry.getValue();
 
-            // 遍历所有在线玩家
-            for (Map.Entry<UUID, PlayerState> entry : playerTracker.getAllStates().entrySet()) {
-                UUID playerId = entry.getKey();
-                PlayerState state = entry.getValue();
+            // 获取玩家当前服务器的悬浮字
+            Map<String, Hologram> serverHolograms = byServer.get(state.getServer());
+            if (serverHolograms == null) {
+                // 该服务器没有悬浮字，隐藏所有
+                for (Hologram hologram : holograms.values()) {
+                    hologram.hideFrom(playerId);
+                }
+                continue;
+            }
 
-                // 检查是否在同一服务器和维度
-                if (!pos.server().equals(state.getServer()) || !pos.dimension().equals(state.getDimension())) {
-                    // 不在同一世界，隐藏
+            // 计算该服务器内的悬浮字可见性
+            for (Hologram hologram : serverHolograms.values()) {
+                IHologram.HologramPos pos = hologram.getPosition();
+
+                // 检查维度
+                if (!pos.dimension().equals(state.getDimension())) {
                     if (hologram.isObserver(playerId)) {
                         hologram.hideFrom(playerId);
                     }
@@ -91,6 +120,16 @@ public class HologramManager {
                         hologram.showTo(playerId);
                     }
                 } else {
+                    if (hologram.isObserver(playerId)) {
+                        hologram.hideFrom(playerId);
+                    }
+                }
+            }
+
+            // 隐藏其他服务器的悬浮字
+            for (Map.Entry<String, Map<String, Hologram>> serverEntry : byServer.entrySet()) {
+                if (serverEntry.getKey().equals(state.getServer())) continue;
+                for (Hologram hologram : serverEntry.getValue().values()) {
                     if (hologram.isObserver(playerId)) {
                         hologram.hideFrom(playerId);
                     }

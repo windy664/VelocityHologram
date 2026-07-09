@@ -11,12 +11,28 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PlayerTracker {
 
     private final Map<UUID, PlayerState> states = new ConcurrentHashMap<>();
+    private final Map<String, UUID> nameToUuid = new ConcurrentHashMap<>();
+
+    /**
+     * 注册玩家（进服时调用）。
+     */
+    public void register(UUID playerId, String name) {
+        nameToUuid.put(name.toLowerCase(), playerId);
+        states.computeIfAbsent(playerId, k -> new PlayerState());
+    }
 
     /**
      * 获取或创建玩家状态。
      */
     public PlayerState getOrCreate(UUID playerId) {
         return states.computeIfAbsent(playerId, k -> new PlayerState());
+    }
+
+    /**
+     * 通过名字获取 UUID。
+     */
+    public UUID findUuid(String name) {
+        return nameToUuid.get(name.toLowerCase());
     }
 
     /**
@@ -37,6 +53,9 @@ public class PlayerTracker {
      * 玩家断开连接时移除。
      */
     public void remove(UUID playerId) {
-        states.remove(playerId);
+        PlayerState state = states.remove(playerId);
+        if (state != null) {
+            nameToUuid.remove(state.getName().toLowerCase());
+        }
     }
 }

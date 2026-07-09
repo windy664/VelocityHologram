@@ -21,7 +21,7 @@ public class HologramPacketListener extends PacketListenerAbstract {
     private final HologramManager hologramManager;
 
     public HologramPacketListener(PlayerTracker playerTracker, HologramManager hologramManager) {
-        super(PacketListenerPriority.LOW); // 低优先级，不影响其他插件
+        super(PacketListenerPriority.LOW);
         this.playerTracker = playerTracker;
         this.hologramManager = hologramManager;
     }
@@ -40,7 +40,7 @@ public class HologramPacketListener extends PacketListenerAbstract {
 
         // 追踪坐标
         if (isMovement(type)) {
-            handleMovement(event, name);
+            handleMovement(event, user, name);
         }
     }
 
@@ -56,11 +56,14 @@ public class HologramPacketListener extends PacketListenerAbstract {
 
         PacketTypeCommon type = event.getPacketType();
 
-        // 追踪维度
-        // TODO: 找到正确的 packetevents 包类型常量
-        // if (type == PacketType.Play.Server.JOIN_GAME || type == PacketType.Play.Server.RESPAWN) {
-        //     handleDimensionChange(event, name);
-        // }
+        // 追踪维度（Join Game 包）
+        if (type == PacketType.Play.Server.JOIN_GAME) {
+            handleJoinGame(event, user, name);
+        }
+        // 追踪维度（Respawn 包）
+        else if (type == PacketType.Play.Server.RESPAWN) {
+            handleRespawn(event, user, name);
+        }
     }
 
     private boolean isMovement(PacketTypeCommon type) {
@@ -71,7 +74,7 @@ public class HologramPacketListener extends PacketListenerAbstract {
     /**
      * 从移动包中提取坐标。
      */
-    private void handleMovement(PacketReceiveEvent event, String name) {
+    private void handleMovement(PacketReceiveEvent event, User user, String name) {
         try {
             Object buf = event.getByteBuf();
             com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.markReaderIndex(buf);
@@ -82,11 +85,11 @@ public class HologramPacketListener extends PacketListenerAbstract {
 
             com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.resetReaderIndex(buf);
 
-            // 通过 UUID 获取玩家状态（需要从 name 映射到 UUID）
-            // TODO: 维护 name -> UUID 映射
-            UUID playerId = findPlayerId(name);
+            // 获取或创建玩家状态
+            UUID playerId = user.getUUID();
             if (playerId != null) {
                 PlayerState state = playerTracker.getOrCreate(playerId);
+                state.setName(name);
                 state.setPosition(x, y, z);
             }
         } catch (Exception ignored) {
@@ -94,22 +97,33 @@ public class HologramPacketListener extends PacketListenerAbstract {
     }
 
     /**
-     * 从 Login/Respawn 包中提取维度。
-     * <p>这些包的格式比较复杂，包含 NBT 数据。
-     * TODO: 正确解析维度字段
+     * 从 Join Game 包中提取维度。
+     * <p>Join Game 包格式复杂，包含 NBT 数据。
+     * 简化实现：暂时使用默认维度。
      */
-    private void handleDimensionChange(PacketSendEvent event, String name) {
-        // 简化实现：暂时跳过维度解析
-        // 实际需要解析 Login/Respawn 包的 Dimension Type 字段
+    private void handleJoinGame(PacketSendEvent event, User user, String name) {
+        // TODO: 解析 Join Game 包的 Dimension Type 字段
+        // 暂时设置为默认维度
+        UUID playerId = user.getUUID();
+        if (playerId != null) {
+            PlayerState state = playerTracker.getOrCreate(playerId);
+            state.setName(name);
+            state.setDimension("minecraft:overworld");
+        }
     }
 
     /**
-     * 通过玩家名查找 UUID。
-     * TODO: 实现 name -> UUID 映射
+     * 从 Respawn 包中提取维度。
+     * <p>Respawn 包格式复杂，包含 NBT 数据。
+     * 简化实现：暂时使用默认维度。
      */
-    private UUID findPlayerId(String name) {
-        // Velocity: proxy.getPlayer(name).map(Player::getUniqueId)
-        // 需要持有 proxy 引用
-        return null;
+    private void handleRespawn(PacketSendEvent event, User user, String name) {
+        // TODO: 解析 Respawn 包的 Dimension Type 字段
+        // 暂时设置为默认维度
+        UUID playerId = user.getUUID();
+        if (playerId != null) {
+            PlayerState state = playerTracker.getOrCreate(playerId);
+            state.setName(name);
+        }
     }
 }

@@ -6,9 +6,13 @@ package org.windy.hologram.tracker;
  */
 public class PlayerState {
 
+    private volatile String name = "";
     private volatile double x, y, z;
     private volatile String dimension = "minecraft:overworld";
     private volatile String server = "";
+
+    public void setName(String name) { this.name = name; }
+    public String getName() { return name; }
 
     public void setPosition(double x, double y, double z) {
         this.x = x;
