@@ -23,26 +23,33 @@ import java.util.UUID;
  * <ul>
  *   <li>8-10: translation (Vector3f)</li>
  *   <li>11-13: scale (Vector3f)</li>
- *   <li>22: Text (Component)</li>
- *   <li>23: LineWidth (Int)</li>
- *   <li>24: BackgroundColor (Int ARGB)</li>
- *   <li>25: TextOpacity (Byte)</li>
- *   <li>26: StyleFlags (Byte)</li>
- *   <li>27: Billboard (Byte) — 0=FIXED, 1=VERTICAL, 2=HORIZONTAL, 3=CENTER</li>
+ *   <li>14-17: left_rotation (Quaternionf)</li>
+ *   <li>18: billboard (Byte) — 0=FIXED, 1=VERTICAL, 2=HORIZONTAL, 3=CENTER</li>
+ *   <li>19: brightness (Int)</li>
+ *   <li>20: view_range (Float)</li>
+ *   <li>21: shadow_radius (Float)</li>
+ *   <li>22: shadow_strength (Float)</li>
+ *   <li>23: width (Float)</li>
+ *   <li>24: height (Float)</li>
+ *   <li>25: text (Component)</li>
+ *   <li>26: line_width (Int)</li>
+ *   <li>27: background_color (Int ARGB)</li>
+ *   <li>28: text_opacity (Byte)</li>
+ *   <li>29: style_flags (Byte)</li>
  * </ul>
  */
 public class TextDisplayFactory implements DisplayEntityFactory {
 
     // Display 基础
     private static final int INDEX_SCALE = 11;
-    private static final int INDEX_BILLBOARD = 15;
+    private static final int INDEX_BILLBOARD = 18;
 
-    // TextDisplay 专属（MC 26.1.2 验证通过）
-    private static final int INDEX_TEXT = 23;
-    private static final int INDEX_LINE_WIDTH = 24;
-    private static final int INDEX_BACKGROUND_COLOR = 25;
-    private static final int INDEX_TEXT_OPACITY = 26;
-    private static final int INDEX_STYLE_FLAGS = 27;
+    // TextDisplay 专属
+    private static final int INDEX_TEXT = 25;
+    private static final int INDEX_LINE_WIDTH = 26;
+    private static final int INDEX_BACKGROUND_COLOR = 27;
+    private static final int INDEX_TEXT_OPACITY = 28;
+    private static final int INDEX_STYLE_FLAGS = 29;
 
     @Override
     public void spawn(Object player, int entityId, double x, double y, double z, DisplayConfig config) {
