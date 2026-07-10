@@ -6,6 +6,8 @@ import org.windy.hologram.api.IHologramLine;
 import org.windy.hologram.display.DisplayConfig;
 import org.windy.hologram.display.DisplayEntityType;
 
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -31,6 +33,15 @@ public class HologramLine implements IHologramLine {
     private double offsetY;
     private double offsetX;
     private double offsetZ;
+
+    // 行高（0 = 使用默认行间距）
+    private double lineHeight = 0;
+
+    // 行级权限
+    private String permission;
+
+    // 行级 Flag
+    private final Set<String> flags = ConcurrentHashMap.newKeySet();
 
     // 动作
     private Action leftClickAction;
@@ -121,6 +132,23 @@ public class HologramLine implements IHologramLine {
     public double getOffsetZ() { return offsetZ; }
     public void setOffsetZ(double offsetZ) { this.offsetZ = offsetZ; }
 
+    // ===== 行高 =====
+
+    public double getLineHeight() { return lineHeight; }
+    public void setLineHeight(double lineHeight) { this.lineHeight = lineHeight; }
+
+    // ===== 行级权限 =====
+
+    public String getPermission() { return permission; }
+    public void setPermission(String permission) { this.permission = permission; }
+
+    // ===== 行级 Flag =====
+
+    public Set<String> getFlags() { return flags; }
+    public void addFlag(String flag) { flags.add(flag.toLowerCase()); }
+    public void removeFlag(String flag) { flags.remove(flag.toLowerCase()); }
+    public boolean hasFlag(String flag) { return flags.contains(flag.toLowerCase()); }
+
     // ===== 动作 =====
 
     public Action getLeftClickAction() { return leftClickAction; }
@@ -165,7 +193,7 @@ public class HologramLine implements IHologramLine {
      * @param lineSpacing  默认行间距
      */
     public double getWorldY(double baseY, double lineSpacing) {
-        double spacing = (offsetY > 0) ? offsetY : lineSpacing;
+        double spacing = (lineHeight > 0) ? lineHeight : (offsetY > 0) ? offsetY : lineSpacing;
         return baseY - (index * spacing);
     }
 }

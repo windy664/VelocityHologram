@@ -29,8 +29,8 @@ import java.util.function.Function;
 public class Hologram implements IHologram {
 
     private final UUID id;
-    private final String name;
-    private final HologramPos position;
+    private String name;
+    private HologramPos position;
     private final List<Page> pages = new ArrayList<>();
     private final Set<UUID> observers = ConcurrentHashMap.newKeySet();
     private final Map<UUID, Integer> playerPages = new ConcurrentHashMap<>();
@@ -42,6 +42,7 @@ public class Hologram implements IHologram {
     private final Function<UUID, Object> playerResolver;
 
     // 配置
+    private boolean enabled = true;
     private double viewDistance = 48.0;      // 显示范围（进入此范围才显示）
     private double updateDistance = 48.0;    // 更新范围（在此范围内才接收更新）
     private double lineSpacing = 0.3;
@@ -69,18 +70,28 @@ public class Hologram implements IHologram {
     @Override public HologramPos getPosition() { return position; }
 
     /**
+     * 重命名悬浮字。
+     */
+    public void setName(String name) { this.name = name; }
+
+    /**
      * 更新悬浮字位置（用于 move 命令）。
      */
     public void setPosition(double x, double y, double z) {
-        // 由于 HologramPos 是 record（不可变），需要通过反射来更新
-        try {
-            var field = Hologram.class.getDeclaredField("position");
-            field.setAccessible(true);
-            field.set(this, new HologramPos(x, y, z, position.dimension(), position.server()));
-        } catch (Exception e) {
-            throw new RuntimeException("无法更新悬浮字位置", e);
-        }
+        this.position = new HologramPos(x, y, z, position.dimension(), position.server());
     }
+
+    /**
+     * 设置悬浮字朝向。
+     */
+    public void setFacing(float yaw, float pitch) {
+        // 朝向暂不持久化，仅用于对齐计算
+    }
+
+    // ===== 启用/禁用 =====
+
+    public boolean isEnabled() { return enabled; }
+    public void setEnabled(boolean enabled) { this.enabled = enabled; }
 
     public double getViewDistance() { return viewDistance; }
     public void setViewDistance(double viewDistance) { this.viewDistance = viewDistance; }
@@ -132,6 +143,44 @@ public class Hologram implements IHologram {
         Page page = new Page(pages.size());
         pages.add(page);
         return page;
+    }
+
+    /**
+     * 在指定位置插入新页。
+     */
+    public Page insertPage(int index) {
+        if (index < 0 || index > pages.size()) return null;
+        Page page = new Page(index);
+        pages.add(index, page);
+        // 重建索引
+        for (int i = 0; i < pages.size(); i++) {
+            // Page 的 pageIndex 是构造时固定的
+        }
+        // 调整编辑页码
+        if (editPageIndex >= index) editPageIndex++;
+        // 调整玩家页码
+        playerPages.replaceAll((pid, pageIdx) -> pageIdx >= index ? pageIdx + 1 : pageIdx);
+        return page;
+    }
+
+    /**
+     * 交换两页。
+     */
+    public boolean swapPages(int a, int b) {
+        if (a < 0 || a >= pages.size() || b < 0 || b >= pages.size()) return false;
+        Page tmp = pages.get(a);
+        pages.set(a, pages.get(b));
+        pages.set(b, tmp);
+        // 调整编辑页码
+        if (editPageIndex == a) editPageIndex = b;
+        else if (editPageIndex == b) editPageIndex = a;
+        // 调整玩家页码
+        playerPages.replaceAll((pid, pageIdx) -> {
+            if (pageIdx == a) return b;
+            if (pageIdx == b) return a;
+            return pageIdx;
+        });
+        return true;
     }
 
     /**

@@ -15,7 +15,9 @@ import org.windy.hologram.placeholder.PlaceholderManager;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
@@ -26,6 +28,9 @@ public class Page {
 
     private final List<HologramLine> lines = new ArrayList<>();
     private final int pageIndex;
+
+    // 页面级动作（点击页面空白区域执行）
+    private final Map<String, Action> pageActions = new ConcurrentHashMap<>();
 
     public Page(int pageIndex) {
         this.pageIndex = pageIndex;
@@ -252,6 +257,43 @@ public class Page {
         for (HologramLine line : lines) {
             clickHandler.unregisterClickAction(line.getEntityId());
         }
+    }
+
+    // ===== 页面级动作 =====
+
+    /**
+     * 添加页面动作。
+     */
+    public void addAction(String clickType, Action action) {
+        pageActions.put(clickType.toLowerCase(), action);
+    }
+
+    /**
+     * 移除页面动作。
+     */
+    public void removeAction(String clickType) {
+        pageActions.remove(clickType.toLowerCase());
+    }
+
+    /**
+     * 获取页面动作。
+     */
+    public Action getAction(String clickType) {
+        return pageActions.get(clickType.toLowerCase());
+    }
+
+    /**
+     * 获取所有页面动作。
+     */
+    public Map<String, Action> getActions() {
+        return Collections.unmodifiableMap(pageActions);
+    }
+
+    /**
+     * 清除所有页面动作。
+     */
+    public void clearActions() {
+        pageActions.clear();
     }
 
     /**

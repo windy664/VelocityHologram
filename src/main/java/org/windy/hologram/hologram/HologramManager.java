@@ -124,6 +124,28 @@ public class HologramManager {
     }
 
     /**
+     * 重命名悬浮字。
+     *
+     * @param oldName 旧名称
+     * @param newName 新名称
+     * @return true 如果重命名成功
+     */
+    public boolean renameHologram(String oldName, String newName) {
+        if (holograms.containsKey(newName)) return false;
+        Hologram hologram = holograms.remove(oldName);
+        if (hologram == null) return false;
+        hologram.setName(newName);
+        holograms.put(newName, hologram);
+        // 更新服务器分组
+        Map<String, Hologram> serverHolograms = byServer.get(hologram.getPosition().server());
+        if (serverHolograms != null) {
+            serverHolograms.remove(oldName);
+            serverHolograms.put(newName, hologram);
+        }
+        return true;
+    }
+
+    /**
      * 定时调用：更新所有悬浮字的可见性。
      */
     public void tickVisibility() {
@@ -134,6 +156,14 @@ public class HologramManager {
 
             // 遍历所有悬浮字，判断可见性
             for (Hologram hologram : holograms.values()) {
+                // 检查启用状态
+                if (!hologram.isEnabled()) {
+                    if (hologram.isObserver(playerId)) {
+                        hologram.hideFrom(playerId);
+                    }
+                    continue;
+                }
+
                 IHologram.HologramPos pos = hologram.getPosition();
                 String holoServer = pos.server();
 

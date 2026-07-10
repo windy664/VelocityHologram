@@ -181,6 +181,42 @@ public class HologramCommand implements SimpleCommand {
                 if (!checkPerm(source, "velocityhologram.command.list")) return;
                 handleNear(source, args);
                 break;
+            case "rename":
+                if (!checkPerm(source, "velocityhologram.command.admin")) return;
+                handleRename(source, args);
+                break;
+            case "enable":
+                if (!checkPerm(source, "velocityhologram.command.edit")) return;
+                handleEnable(source, args, true);
+                break;
+            case "disable":
+                if (!checkPerm(source, "velocityhologram.command.edit")) return;
+                handleEnable(source, args, false);
+                break;
+            case "align":
+                if (!checkPerm(source, "velocityhologram.command.edit")) return;
+                handleAlign(source, args);
+                break;
+            case "setfacing":
+                if (!checkPerm(source, "velocityhologram.command.edit")) return;
+                handleSetFacing(source, args);
+                break;
+            case "insertpage":
+                if (!checkPerm(source, "velocityhologram.command.edit")) return;
+                handleInsertPage(source, args);
+                break;
+            case "swappages":
+                if (!checkPerm(source, "velocityhologram.command.edit")) return;
+                handleSwapPages(source, args);
+                break;
+            case "line":
+                if (!checkPerm(source, "velocityhologram.command.edit")) return;
+                handleLineCommand(source, args);
+                break;
+            case "page":
+                if (!checkPerm(source, "velocityhologram.command.edit")) return;
+                handlePageCommand(source, args);
+                break;
             default:
                 sendHelp(source);
                 break;
@@ -192,9 +228,11 @@ public class HologramCommand implements SimpleCommand {
     private static final List<String> SUBCOMMANDS = List.of(
             "create", "delete", "addline", "additem", "addblock", "addentity",
             "addhead", "addsmallhead", "setline", "removeline", "insertline", "swaplines",
-            "addpage", "removepage", "switchpage", "editpage",
+            "addpage", "removepage", "switchpage", "editpage", "insertpage", "swappages",
             "addflag", "removeflag",
             "move", "movehere", "clone", "center", "setoffset", "near",
+            "rename", "enable", "disable", "align", "setfacing",
+            "line", "page",
             "list", "save", "reload", "debug", "tp", "info", "permission", "perm"
     );
 
@@ -1022,6 +1060,689 @@ public class HologramCommand implements SimpleCommand {
         }
     }
 
+    // ===== 新增命令 =====
+
+    private void handleRename(CommandSource source, String[] args) {
+        if (args.length < 3) {
+            msg(source, "§c用法: /holo rename <旧名称> <新名称>");
+            return;
+        }
+        String oldName = args[1];
+        String newName = args[2];
+        if (hologramManager.getHologram(oldName) == null) {
+            msg(source, Lang.get("holo_not_found", "%name%", oldName));
+            return;
+        }
+        if (hologramManager.getHologram(newName) != null) {
+            msg(source, Lang.get("holo_already_exists", "%name%", newName));
+            return;
+        }
+        // 删除旧文件
+        hologramLoader.delete(oldName);
+        // 重命名
+        if (hologramManager.renameHologram(oldName, newName)) {
+            hologramLoader.save(hologramManager.getHologram(newName));
+            msg(source, "§a已将悬浮字 '" + oldName + "' 重命名为 '" + newName + "'");
+        } else {
+            msg(source, "§c重命名失败");
+        }
+    }
+
+    private void handleEnable(CommandSource source, String[] args, boolean enabled) {
+        if (args.length < 2) {
+            msg(source, "§c用法: /holo " + (enabled ? "enable" : "disable") + " <名称>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[1]);
+        if (hologram == null) return;
+        hologram.setEnabled(enabled);
+        hologramLoader.save(hologram);
+        msg(source, "§a已" + (enabled ? "启用" : "禁用") + "悬浮字 '" + args[1] + "'");
+    }
+
+    private void handleAlign(CommandSource source, String[] args) {
+        if (!(source instanceof Player)) {
+            msg(source, Lang.get("player_only"));
+            return;
+        }
+        if (args.length < 3) {
+            msg(source, "§c用法: /holo align <名称> <x|y|z|center>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[1]);
+        if (hologram == null) return;
+
+        String axis = args[2].toLowerCase();
+        double x = hologram.getPosition().x();
+        double y = hologram.getPosition().y();
+        double z = hologram.getPosition().z();
+
+        switch (axis) {
+            case "x":
+                x = Math.floor(x) + 0.5;
+                break;
+            case "y":
+                y = Math.floor(y) + 0.5;
+                break;
+            case "z":
+                z = Math.floor(z) + 0.5;
+                break;
+            case "center":
+                x = Math.floor(x) + 0.5;
+                z = Math.floor(z) + 0.5;
+                break;
+            default:
+                msg(source, "§c轴必须是 x、y、z 或 center");
+                return;
+        }
+
+        hologram.setPosition(x, y, z);
+        hologram.refresh();
+        hologramLoader.save(hologram);
+        msg(source, "§a已对齐悬浮字 '" + args[1] + "' 到 " + axis + " 轴");
+    }
+
+    private void handleSetFacing(CommandSource source, String[] args) {
+        if (args.length < 2) {
+            msg(source, "§c用法: /holo setfacing <名称>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[1]);
+        if (hologram == null) return;
+        // Velocity Player 没有 getYaw/getPitch，暂不实现
+        msg(source, "§e朝向功能暂未实现（需要子服支持）");
+    }
+
+    private void handleInsertPage(CommandSource source, String[] args) {
+        if (args.length < 3) {
+            msg(source, "§c用法: /holo insertpage <名称> <页码>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[1]);
+        if (hologram == null) return;
+        try {
+            int page = Integer.parseInt(args[2]);
+            if (hologram.insertPage(page) != null) {
+                hologramLoader.save(hologram);
+                msg(source, "§a已在位置 " + page + " 插入新页");
+            } else {
+                msg(source, "§c页码无效");
+            }
+        } catch (NumberFormatException e) {
+            msg(source, "§c页码必须是数字");
+        }
+    }
+
+    private void handleSwapPages(CommandSource source, String[] args) {
+        if (args.length < 4) {
+            msg(source, "§c用法: /holo swappages <名称> <页码A> <页码B>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[1]);
+        if (hologram == null) return;
+        try {
+            int a = Integer.parseInt(args[2]);
+            int b = Integer.parseInt(args[3]);
+            if (hologram.swapPages(a, b)) {
+                hologramLoader.save(hologram);
+                msg(source, "§a已交换第 " + a + " 页和第 " + b + " 页");
+            } else {
+                msg(source, "§c页码无效");
+            }
+        } catch (NumberFormatException e) {
+            msg(source, "§c页码必须是数字");
+        }
+    }
+
+    // ===== Line 子命令 =====
+
+    private void handleLineCommand(CommandSource source, String[] args) {
+        if (args.length < 2) {
+            msg(source, "§c用法: /holo line <add|set|remove|insert|swap|align|height|offsetx|offsetz|setpermission|addflag|removeflag|setfacing> ...");
+            return;
+        }
+        String sub = args[1].toLowerCase();
+        switch (sub) {
+            case "add":
+                handleLineAdd(source, args);
+                break;
+            case "set":
+                handleLineSet(source, args);
+                break;
+            case "remove":
+                handleLineRemove(source, args);
+                break;
+            case "insert":
+                handleLineInsert(source, args);
+                break;
+            case "swap":
+                handleLineSwap(source, args);
+                break;
+            case "align":
+                handleLineAlign(source, args);
+                break;
+            case "height":
+                handleLineHeight(source, args);
+                break;
+            case "offsetx":
+                handleLineOffsetX(source, args);
+                break;
+            case "offsetz":
+                handleLineOffsetZ(source, args);
+                break;
+            case "setpermission":
+                handleLineSetPermission(source, args);
+                break;
+            case "addflag":
+                handleLineAddFlag(source, args);
+                break;
+            case "removeflag":
+                handleLineRemoveFlag(source, args);
+                break;
+            case "setfacing":
+                handleLineSetFacing(source, args);
+                break;
+            default:
+                msg(source, "§c未知的行子命令: " + sub);
+                break;
+        }
+    }
+
+    private void handleLineAdd(CommandSource source, String[] args) {
+        if (args.length < 4) {
+            msg(source, "§c用法: /holo line add <名称> <文本>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        String text = joinArgs(args, 3);
+        hologram.addLine(text);
+        hologram.refresh();
+        hologramLoader.save(hologram);
+        msg(source, "§a已添加行到悬浮字 '" + args[2] + "'");
+    }
+
+    private void handleLineSet(CommandSource source, String[] args) {
+        if (args.length < 5) {
+            msg(source, "§c用法: /holo line set <名称> <行号> <文本>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        try {
+            int index = Integer.parseInt(args[3]);
+            String text = joinArgs(args, 4);
+            hologram.setLine(index, text);
+            hologram.update();
+            hologramLoader.save(hologram);
+            msg(source, "§a已更新行 " + index);
+        } catch (NumberFormatException e) {
+            msg(source, "§c行号必须是数字");
+        }
+    }
+
+    private void handleLineRemove(CommandSource source, String[] args) {
+        if (args.length < 4) {
+            msg(source, "§c用法: /holo line remove <名称> <行号>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        try {
+            int index = Integer.parseInt(args[3]);
+            hologram.removeLine(index);
+            hologram.refresh();
+            hologramLoader.save(hologram);
+            msg(source, "§a已删除行 " + index);
+        } catch (NumberFormatException e) {
+            msg(source, "§c行号必须是数字");
+        }
+    }
+
+    private void handleLineInsert(CommandSource source, String[] args) {
+        if (args.length < 5) {
+            msg(source, "§c用法: /holo line insert <名称> <行号> <文本>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        try {
+            int index = Integer.parseInt(args[3]);
+            String text = joinArgs(args, 4);
+            if (hologram.insertLine(index, text)) {
+                hologram.refresh();
+                hologramLoader.save(hologram);
+                msg(source, "§a已在位置 " + index + " 插入行");
+            } else {
+                msg(source, "§c插入位置无效");
+            }
+        } catch (NumberFormatException e) {
+            msg(source, "§c行号必须是数字");
+        }
+    }
+
+    private void handleLineSwap(CommandSource source, String[] args) {
+        if (args.length < 5) {
+            msg(source, "§c用法: /holo line swap <名称> <行号A> <行号B>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        try {
+            int a = Integer.parseInt(args[3]);
+            int b = Integer.parseInt(args[4]);
+            if (hologram.swapLines(a, b)) {
+                hologram.refresh();
+                hologramLoader.save(hologram);
+                msg(source, "§a已交换行 " + a + " 和 " + b);
+            } else {
+                msg(source, "§c行号无效");
+            }
+        } catch (NumberFormatException e) {
+            msg(source, "§c行号必须是数字");
+        }
+    }
+
+    private void handleLineAlign(CommandSource source, String[] args) {
+        if (args.length < 5) {
+            msg(source, "§c用法: /holo line align <名称> <行号> <left|center|right>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        try {
+            int index = Integer.parseInt(args[3]);
+            HologramLine line = hologram.getLine(index);
+            if (line == null) {
+                msg(source, "§c行号无效");
+                return;
+            }
+            String align = args[4].toLowerCase();
+            double offset;
+            switch (align) {
+                case "left":
+                    offset = -0.5;
+                    break;
+                case "center":
+                    offset = 0;
+                    break;
+                case "right":
+                    offset = 0.5;
+                    break;
+                default:
+                    msg(source, "§c对齐方式必须是 left、center 或 right");
+                    return;
+            }
+            line.setOffsetX(offset);
+            hologram.refresh();
+            hologramLoader.save(hologram);
+            msg(source, "§a已对齐行 " + index + " 到 " + align);
+        } catch (NumberFormatException e) {
+            msg(source, "§c行号必须是数字");
+        }
+    }
+
+    private void handleLineHeight(CommandSource source, String[] args) {
+        if (args.length < 5) {
+            msg(source, "§c用法: /holo line height <名称> <行号> <高度>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        try {
+            int index = Integer.parseInt(args[3]);
+            double height = Double.parseDouble(args[4]);
+            HologramLine line = hologram.getLine(index);
+            if (line == null) {
+                msg(source, "§c行号无效");
+                return;
+            }
+            line.setLineHeight(height);
+            hologram.refresh();
+            hologramLoader.save(hologram);
+            msg(source, "§a已设置行 " + index + " 的高度为 " + height);
+        } catch (NumberFormatException e) {
+            msg(source, "§c行号和高度必须是数字");
+        }
+    }
+
+    private void handleLineOffsetX(CommandSource source, String[] args) {
+        if (args.length < 5) {
+            msg(source, "§c用法: /holo line offsetx <名称> <行号> <x>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        try {
+            int index = Integer.parseInt(args[3]);
+            double x = Double.parseDouble(args[4]);
+            HologramLine line = hologram.getLine(index);
+            if (line == null) {
+                msg(source, "§c行号无效");
+                return;
+            }
+            line.setOffsetX(x);
+            hologram.refresh();
+            hologramLoader.save(hologram);
+            msg(source, "§a已设置行 " + index + " 的 X 偏移为 " + x);
+        } catch (NumberFormatException e) {
+            msg(source, "§c行号和偏移必须是数字");
+        }
+    }
+
+    private void handleLineOffsetZ(CommandSource source, String[] args) {
+        if (args.length < 5) {
+            msg(source, "§c用法: /holo line offsetz <名称> <行号> <z>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        try {
+            int index = Integer.parseInt(args[3]);
+            double z = Double.parseDouble(args[4]);
+            HologramLine line = hologram.getLine(index);
+            if (line == null) {
+                msg(source, "§c行号无效");
+                return;
+            }
+            line.setOffsetZ(z);
+            hologram.refresh();
+            hologramLoader.save(hologram);
+            msg(source, "§a已设置行 " + index + " 的 Z 偏移为 " + z);
+        } catch (NumberFormatException e) {
+            msg(source, "§c行号和偏移必须是数字");
+        }
+    }
+
+    private void handleLineSetPermission(CommandSource source, String[] args) {
+        if (args.length < 5) {
+            msg(source, "§c用法: /holo line setpermission <名称> <行号> <权限节点|->");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        try {
+            int index = Integer.parseInt(args[3]);
+            HologramLine line = hologram.getLine(index);
+            if (line == null) {
+                msg(source, "§c行号无效");
+                return;
+            }
+            String perm = args[4];
+            if (perm.equals("-")) {
+                line.setPermission(null);
+                msg(source, "§a已清除行 " + index + " 的权限");
+            } else {
+                line.setPermission(perm);
+                msg(source, "§a已设置行 " + index + " 的权限为: " + perm);
+            }
+            hologram.refresh();
+            hologramLoader.save(hologram);
+        } catch (NumberFormatException e) {
+            msg(source, "§c行号必须是数字");
+        }
+    }
+
+    private void handleLineAddFlag(CommandSource source, String[] args) {
+        if (args.length < 5) {
+            msg(source, "§c用法: /holo line addflag <名称> <行号> <flag>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        try {
+            int index = Integer.parseInt(args[3]);
+            HologramLine line = hologram.getLine(index);
+            if (line == null) {
+                msg(source, "§c行号无效");
+                return;
+            }
+            line.addFlag(args[4]);
+            hologram.refresh();
+            hologramLoader.save(hologram);
+            msg(source, "§a已添加 flag '" + args[4] + "' 到行 " + index);
+        } catch (NumberFormatException e) {
+            msg(source, "§c行号必须是数字");
+        }
+    }
+
+    private void handleLineRemoveFlag(CommandSource source, String[] args) {
+        if (args.length < 5) {
+            msg(source, "§c用法: /holo line removeflag <名称> <行号> <flag>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        try {
+            int index = Integer.parseInt(args[3]);
+            HologramLine line = hologram.getLine(index);
+            if (line == null) {
+                msg(source, "§c行号无效");
+                return;
+            }
+            line.removeFlag(args[4]);
+            hologram.refresh();
+            hologramLoader.save(hologram);
+            msg(source, "§a已移除 flag '" + args[4] + "' 从行 " + index);
+        } catch (NumberFormatException e) {
+            msg(source, "§c行号必须是数字");
+        }
+    }
+
+    private void handleLineSetFacing(CommandSource source, String[] args) {
+        if (!(source instanceof Player)) {
+            msg(source, Lang.get("player_only"));
+            return;
+        }
+        if (args.length < 4) {
+            msg(source, "§c用法: /holo line setfacing <名称> <行号>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        try {
+            int index = Integer.parseInt(args[3]);
+            HologramLine line = hologram.getLine(index);
+            if (line == null) {
+                msg(source, "§c行号无效");
+                return;
+            }
+            // 行朝向暂不实现，需要 Display 实体支持
+            msg(source, "§e行朝向功能暂未实现");
+        } catch (NumberFormatException e) {
+            msg(source, "§c行号必须是数字");
+        }
+    }
+
+    // ===== Page 子命令 =====
+
+    private void handlePageCommand(CommandSource source, String[] args) {
+        if (args.length < 2) {
+            msg(source, "§c用法: /holo page <add|insert|remove|swap|switch|addaction|removeaction|clearactions> ...");
+            return;
+        }
+        String sub = args[1].toLowerCase();
+        switch (sub) {
+            case "add":
+                handlePageAdd(source, args);
+                break;
+            case "insert":
+                handlePageInsert(source, args);
+                break;
+            case "remove":
+                handlePageRemove(source, args);
+                break;
+            case "swap":
+                handlePageSwap(source, args);
+                break;
+            case "switch":
+                handlePageSwitch(source, args);
+                break;
+            case "addaction":
+                handlePageAddAction(source, args);
+                break;
+            case "removeaction":
+                handlePageRemoveAction(source, args);
+                break;
+            case "clearactions":
+                handlePageClearActions(source, args);
+                break;
+            default:
+                msg(source, "§c未知的页面子命令: " + sub);
+                break;
+        }
+    }
+
+    private void handlePageAdd(CommandSource source, String[] args) {
+        if (args.length < 3) {
+            msg(source, "§c用法: /holo page add <名称>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        hologram.addPage();
+        hologramLoader.save(hologram);
+        msg(source, "§a已添加第 " + hologram.getPageCount() + " 页");
+    }
+
+    private void handlePageInsert(CommandSource source, String[] args) {
+        if (args.length < 4) {
+            msg(source, "§c用法: /holo page insert <名称> <页码>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        try {
+            int page = Integer.parseInt(args[3]);
+            if (hologram.insertPage(page) != null) {
+                hologramLoader.save(hologram);
+                msg(source, "§a已在位置 " + page + " 插入新页");
+            } else {
+                msg(source, "§c页码无效");
+            }
+        } catch (NumberFormatException e) {
+            msg(source, "§c页码必须是数字");
+        }
+    }
+
+    private void handlePageRemove(CommandSource source, String[] args) {
+        if (args.length < 4) {
+            msg(source, "§c用法: /holo page remove <名称> <页码>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        try {
+            int page = Integer.parseInt(args[3]);
+            if (hologram.removePage(page)) {
+                hologramLoader.save(hologram);
+                msg(source, "§a已删除第 " + page + " 页");
+            } else {
+                msg(source, "§c无法删除（至少保留 1 页，或页码无效）");
+            }
+        } catch (NumberFormatException e) {
+            msg(source, "§c页码必须是数字");
+        }
+    }
+
+    private void handlePageSwap(CommandSource source, String[] args) {
+        if (args.length < 5) {
+            msg(source, "§c用法: /holo page swap <名称> <页码A> <页码B>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        try {
+            int a = Integer.parseInt(args[3]);
+            int b = Integer.parseInt(args[4]);
+            if (hologram.swapPages(a, b)) {
+                hologramLoader.save(hologram);
+                msg(source, "§a已交换第 " + a + " 页和第 " + b + " 页");
+            } else {
+                msg(source, "§c页码无效");
+            }
+        } catch (NumberFormatException e) {
+            msg(source, "§c页码必须是数字");
+        }
+    }
+
+    private void handlePageSwitch(CommandSource source, String[] args) {
+        if (args.length < 4) {
+            msg(source, "§c用法: /holo page switch <名称> <页码>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        try {
+            int page = Integer.parseInt(args[3]);
+            hologram.setEditPageIndex(page);
+            msg(source, "§a编辑页已切换到第 " + page + " 页");
+        } catch (NumberFormatException e) {
+            msg(source, "§c页码必须是数字");
+        }
+    }
+
+    private void handlePageAddAction(CommandSource source, String[] args) {
+        if (args.length < 5) {
+            msg(source, "§c用法: /holo page addaction <名称> <click> <action>");
+            msg(source, "§7click: left, right, shift-left, shift-right");
+            msg(source, "§7action: command:/say hi, connect:lobby, nextpage, prevpage");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        Page page = hologram.getCurrentEditPage();
+        if (page == null) {
+            msg(source, "§c当前编辑页无效");
+            return;
+        }
+        String clickType = args[3].toLowerCase();
+        String actionStr = joinArgs(args, 4);
+        var action = org.windy.hologram.action.ActionFactory.parse(actionStr);
+        if (action == null) {
+            msg(source, "§c无效的动作: " + actionStr);
+            return;
+        }
+        page.addAction(clickType, action);
+        hologramLoader.save(hologram);
+        msg(source, "§a已添加页面动作: " + clickType + " → " + actionStr);
+    }
+
+    private void handlePageRemoveAction(CommandSource source, String[] args) {
+        if (args.length < 4) {
+            msg(source, "§c用法: /holo page removeaction <名称> <click>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        Page page = hologram.getCurrentEditPage();
+        if (page == null) {
+            msg(source, "§c当前编辑页无效");
+            return;
+        }
+        String clickType = args[3].toLowerCase();
+        page.removeAction(clickType);
+        hologramLoader.save(hologram);
+        msg(source, "§a已移除页面动作: " + clickType);
+    }
+
+    private void handlePageClearActions(CommandSource source, String[] args) {
+        if (args.length < 3) {
+            msg(source, "§c用法: /holo page clearactions <名称>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[2]);
+        if (hologram == null) return;
+        Page page = hologram.getCurrentEditPage();
+        if (page == null) {
+            msg(source, "§c当前编辑页无效");
+            return;
+        }
+        page.clearActions();
+        hologramLoader.save(hologram);
+        msg(source, "§a已清除所有页面动作");
+    }
+
     // ===== 权限检查 =====
 
     private boolean checkPerm(CommandSource source, String permission) {
@@ -1038,35 +1759,34 @@ public class HologramCommand implements SimpleCommand {
         msg(source, "§6--- 基础 ---");
         msg(source, "§e/holo create <名称> [文字] §7- 创建悬浮字");
         msg(source, "§e/holo delete <名称> §7- 删除悬浮字");
+        msg(source, "§e/holo rename <旧名> <新名> §7- 重命名");
+        msg(source, "§e/holo enable/disable <名称> §7- 启用/禁用");
         msg(source, "§e/holo list §7- 列出所有");
         msg(source, "§e/holo save [名称] §7- 保存");
         msg(source, "§e/holo reload §7- 重载配置");
-        msg(source, "§6--- 行操作（当前编辑页）---");
-        msg(source, "§e/holo addline <名称> <文本> §7- 添加行");
-        msg(source, "§e/holo additem <名称> <物品ID> §7- 添加物品行");
-        msg(source, "§e/holo addblock <名称> <方块ID> §7- 添加方块行");
-        msg(source, "§e/holo setline <名称> <行号> <文本> §7- 设置行");
-        msg(source, "§e/holo removeline <名称> <行号> §7- 删除行");
-        msg(source, "§e/holo insertline <名称> <行号> <文本> §7- 插入行");
-        msg(source, "§e/holo swaplines <名称> <A> <B> §7- 交换两行");
-        msg(source, "§e/holo setoffset <名称> <行号> <x> <y> <z> §7- 设置行偏移");
-        msg(source, "§6--- 页面 ---");
-        msg(source, "§e/holo addpage <名称> §7- 添加新页");
-        msg(source, "§e/holo removepage <名称> <页码> §7- 删除页");
-        msg(source, "§e/holo switchpage <名称> <页码> §7- 切换编辑页");
+        msg(source, "§6--- 行操作（/holo line ...）---");
+        msg(source, "§e/holo line add/set/remove/insert/swap §7- 行操作");
+        msg(source, "§e/holo line align <名称> <行号> <left|center|right> §7- 行对齐");
+        msg(source, "§e/holo line height <名称> <行号> <高度> §7- 行高");
+        msg(source, "§e/holo line offsetx/offsetz §7- 行偏移");
+        msg(source, "§e/holo line setpermission §7- 行权限");
+        msg(source, "§e/holo line addflag/removeflag §7- 行Flag");
+        msg(source, "§6--- 页面（/holo page ...）---");
+        msg(source, "§e/holo page add/insert/remove/swap/switch §7- 页面操作");
+        msg(source, "§e/holo page addaction/removeaction/clearactions §7- 页面动作");
         msg(source, "§6--- 位置 ---");
-        msg(source, "§e/holo move <名称> §7- 移动到你的位置");
-        msg(source, "§e/holo movehere <名称> §7- 同上（别名）");
+        msg(source, "§e/holo move/movehere <名称> §7- 移动到你的位置");
         msg(source, "§e/holo clone <名称> <新名称> §7- 克隆悬浮字");
         msg(source, "§e/holo center <名称> §7- 居中到区块中心");
+        msg(source, "§e/holo align <名称> <x|y|z|center> §7- 对齐");
+        msg(source, "§e/holo setfacing <名称> §7- 设置朝向");
         msg(source, "§e/holo near [半径] §7- 列出附近悬浮字");
         msg(source, "§6--- 工具 ---");
         msg(source, "§e/holo tp <名称> §7- RCON 传送");
         msg(source, "§e/holo debug <名称> §7- 调试信息");
         msg(source, "§e/holo info §7- 统计信息");
         msg(source, "§e/holo permission <名称> <节点> §7- 设置权限");
-        msg(source, "§e/holo addflag <名称> <flag> §7- 添加 flag");
-        msg(source, "§e/holo removeflag <名称> <flag> §7- 移除 flag");
+        msg(source, "§e/holo addflag/removeflag <名称> <flag> §7- Flag");
     }
 
     // ===== 工具方法 =====

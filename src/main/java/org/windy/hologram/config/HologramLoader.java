@@ -81,6 +81,7 @@ public class HologramLoader {
         String name = file.getName().replace(".yml", "");
 
         double x = 0, y = 0, z = 0;
+        boolean enabled = true;
         double viewDistance = 48;
         double updateDistance = 48;
         double lineSpacing = 0.3;
@@ -92,10 +93,14 @@ public class HologramLoader {
 
         // 解析结果：多页
         List<List<LineConfig>> pages = new ArrayList<>();
+        List<java.util.Map<String, String>> pageActions = new ArrayList<>();
         List<LineConfig> currentPage = null;
+        java.util.Map<String, String> currentPageActions = null;
         LineConfig currentLine = null;
         boolean inPages = false;
         boolean inLines = false;
+        boolean inPageActions = false;
+        boolean inFlags = false;
 
         for (String raw : rawLines) {
             String line = raw.trim();
@@ -105,6 +110,7 @@ public class HologramLoader {
             if (line.equals("pages:")) {
                 inPages = true;
                 inLines = false;
+                inFlags = false;
                 continue;
             }
 
@@ -112,6 +118,19 @@ public class HologramLoader {
             if (!inPages && line.equals("lines:")) {
                 inLines = true;
                 currentPage = new ArrayList<>();
+                currentPageActions = new java.util.HashMap<>();
+                inFlags = false;
+                continue;
+            }
+
+            // 检测 flags: 入口
+            if (line.equals("flags:")) {
+                inFlags = true;
+                continue;
+            }
+
+            if (inFlags && line.startsWith("- ") && line.length() > 2) {
+                flags.add(line.substring(2).trim().toLowerCase());
                 continue;
             }
 
@@ -119,39 +138,72 @@ public class HologramLoader {
                 // 多页模式
                 if (line.startsWith("- lines:")) {
                     // 新页开始
-                    if (currentPage != null) pages.add(currentPage);
+                    if (currentPage != null) {
+                        pages.add(currentPage);
+                        pageActions.add(currentPageActions != null ? currentPageActions : new java.util.HashMap<>());
+                    }
                     currentPage = new ArrayList<>();
+                    currentPageActions = new java.util.HashMap<>();
                     currentLine = null;
+                    inPageActions = false;
                     continue;
                 }
                 if (line.startsWith("- lines")) {
                     // 兼容 "- lines" 无冒号
-                    if (currentPage != null) pages.add(currentPage);
+                    if (currentPage != null) {
+                        pages.add(currentPage);
+                        pageActions.add(currentPageActions != null ? currentPageActions : new java.util.HashMap<>());
+                    }
                     currentPage = new ArrayList<>();
+                    currentPageActions = new java.util.HashMap<>();
                     currentLine = null;
+                    inPageActions = false;
                     continue;
                 }
                 if (currentPage == null) {
                     // 可能是缩进的 "- lines:" 形式
                     if (line.equals("- lines:") || line.equals("- lines")) {
                         currentPage = new ArrayList<>();
+                        currentPageActions = new java.util.HashMap<>();
                         currentLine = null;
+                        inPageActions = false;
                         continue;
                     }
                     // 不在任何页内，跳过
                 }
+                // 检测页面动作
+                if (line.equals("actions:")) {
+                    inPageActions = true;
+                    continue;
+                }
+                if (inPageActions && !line.startsWith("- ")) {
+                    // 解析动作行: clickType: action
+                    int colonIdx = line.indexOf(':');
+                    if (colonIdx > 0) {
+                        String clickType = line.substring(0, colonIdx).trim();
+                        String actionStr = line.substring(colonIdx + 1).trim();
+                        if (currentPageActions != null) {
+                            currentPageActions.put(clickType, actionStr);
+                        }
+                    }
+                    continue;
+                }
+                if (line.startsWith("- ") && inPageActions) {
+                    inPageActions = false;
+                }
                 // 解析行
-                if (currentPage != null) {
+                if (currentPage != null && !inPageActions) {
                     currentLine = parseLine(line, currentLine, currentPage);
                 }
             } else if (inLines) {
                 // 旧格式单页模式
                 currentLine = parseLine(line, currentLine, currentPage);
-            } else {
+            } else if (!inFlags) {
                 // 顶层配置
                 if (line.startsWith("x:")) x = parseDouble(line, 0);
                 else if (line.startsWith("y:")) y = parseDouble(line, 0);
                 else if (line.startsWith("z:")) z = parseDouble(line, 0);
+                else if (line.startsWith("enabled:")) enabled = !line.contains("false");
                 else if (line.startsWith("dimension:")) dimension = line.substring(10).trim();
                 else if (line.startsWith("server:")) server = line.substring(7).trim();
                 else if (line.startsWith("view-distance:")) viewDistance = parseDouble(line, 48);
@@ -159,24 +211,24 @@ public class HologramLoader {
                 else if (line.startsWith("line-spacing:")) lineSpacing = parseDouble(line, 0.3);
                 else if (line.startsWith("update-interval:")) updateInterval = (int) parseDouble(line, 20);
                 else if (line.startsWith("permission:")) permission = line.substring(11).trim().replace("\"", "");
-                else if (line.startsWith("flags:")) {} // 下面解析
-                else if (line.startsWith("- ") && line.length() > 2 && flags != null) {
-                    // flags 列表项
-                    flags.add(line.substring(2).trim().toLowerCase());
-                }
             }
         }
 
         // 收尾
-        if (currentPage != null) pages.add(currentPage);
+        if (currentPage != null) {
+            pages.add(currentPage);
+            pageActions.add(currentPageActions != null ? currentPageActions : new java.util.HashMap<>());
+        }
 
         // 如果没有解析到任何页，创建一个空页
         if (pages.isEmpty()) {
             pages.add(new ArrayList<>());
+            pageActions.add(new java.util.HashMap<>());
         }
 
         // 创建悬浮字
         Hologram hologram = manager.createHologram(name, x, y, z, dimension, server);
+        hologram.setEnabled(enabled);
         hologram.setViewDistance(viewDistance);
         hologram.setUpdateDistance(updateDistance);
         hologram.setLineSpacing(lineSpacing);
@@ -193,6 +245,17 @@ public class HologramLoader {
             Page page = (pi == 0) ? hologram.getPage(0) : hologram.addPage();
             if (page == null) continue;
 
+            // 加载页面动作
+            java.util.Map<String, String> actions = pageActions.get(pi);
+            if (actions != null) {
+                for (var entry : actions.entrySet()) {
+                    Action action = ActionFactory.parse(entry.getValue());
+                    if (action != null) {
+                        page.addAction(entry.getKey(), action);
+                    }
+                }
+            }
+
             for (LineConfig lc : pages.get(pi)) {
                 DisplayConfig config = buildDisplayConfig(lc);
                 HologramLine holoLine = page.addLine(config);
@@ -201,6 +264,15 @@ public class HologramLoader {
                 if (lc.offsetY > 0) holoLine.setOffsetY(lc.offsetY);
                 if (lc.offsetX != 0) holoLine.setOffsetX(lc.offsetX);
                 if (lc.offsetZ != 0) holoLine.setOffsetZ(lc.offsetZ);
+                if (lc.lineHeight > 0) holoLine.setLineHeight(lc.lineHeight);
+
+                // 行级权限和 Flag
+                if (lc.permission != null && !lc.permission.isEmpty()) {
+                    holoLine.setPermission(lc.permission);
+                }
+                for (String flag : lc.flags) {
+                    holoLine.addFlag(flag);
+                }
 
                 // 点击动作
                 if (lc.leftClick != null || lc.rightClick != null
@@ -258,6 +330,13 @@ public class HologramLoader {
             else if (line.startsWith("offset-x:")) currentLine.offsetX = parseDouble(line, 0);
             else if (line.startsWith("offset-z:")) currentLine.offsetZ = parseDouble(line, 0);
             else if (line.startsWith("line-width:")) currentLine.lineWidth = (int) parseDouble(line, 200);
+            else if (line.startsWith("line-height:")) currentLine.lineHeight = parseDouble(line, 0);
+            else if (line.startsWith("permission:")) currentLine.permission = line.substring(11).trim().replace("\"", "");
+            else if (line.startsWith("flags:")) {} // 下面解析
+            else if (line.startsWith("- ") && line.length() > 2) {
+                // flags 列表项
+                currentLine.flags.add(line.substring(2).trim().toLowerCase());
+            }
         }
         return currentLine;
     }
@@ -303,6 +382,7 @@ public class HologramLoader {
         out.add("z: " + hologram.getPosition().z());
         out.add("dimension: " + hologram.getPosition().dimension());
         out.add("server: " + hologram.getPosition().server());
+        out.add("enabled: " + hologram.isEnabled());
         out.add("view-distance: " + hologram.getViewDistance());
         out.add("update-distance: " + hologram.getUpdateDistance());
         out.add("line-spacing: " + hologram.getLineSpacing());
@@ -334,6 +414,14 @@ public class HologramLoader {
             }
 
             String indent = multiPage ? "    " : "  ";
+
+            // 保存页面动作
+            if (!page.getActions().isEmpty()) {
+                out.add(indent + "actions:");
+                for (var entry : page.getActions().entrySet()) {
+                    out.add(indent + "  " + entry.getKey() + ": " + ActionFactory.serialize(entry.getValue()));
+                }
+            }
 
             for (var line : page.getLines()) {
                 if (!(line instanceof HologramLine)) continue;
@@ -369,6 +457,18 @@ public class HologramLoader {
                 if (hl.getOffsetY() > 0) out.add(indent + "  offset-y: " + hl.getOffsetY());
                 if (hl.getOffsetX() != 0) out.add(indent + "  offset-x: " + hl.getOffsetX());
                 if (hl.getOffsetZ() != 0) out.add(indent + "  offset-z: " + hl.getOffsetZ());
+                if (hl.getLineHeight() > 0) out.add(indent + "  line-height: " + hl.getLineHeight());
+
+                // 行级权限和 Flag
+                if (hl.getPermission() != null) {
+                    out.add(indent + "  permission: \"" + hl.getPermission() + "\"");
+                }
+                if (!hl.getFlags().isEmpty()) {
+                    out.add(indent + "  flags:");
+                    for (String flag : hl.getFlags()) {
+                        out.add(indent + "    - " + flag);
+                    }
+                }
 
                 if (hl.getLeftClickAction() != null)
                     out.add(indent + "  left-click: " + ActionFactory.serialize(hl.getLeftClickAction()));
@@ -449,9 +549,11 @@ public class HologramLoader {
         String text, itemId, blockId, entityId;
         String leftClick, rightClick, shiftLeftClick, shiftRightClick;
         String billboard;
+        String permission;
+        java.util.Set<String> flags = new java.util.HashSet<>();
         float scale, scaleX, scaleY, scaleZ;
         byte opacity;
         int backgroundColor, lineWidth;
-        double offsetY, offsetX, offsetZ;
+        double offsetY, offsetX, offsetZ, lineHeight;
     }
 }
