@@ -11,42 +11,54 @@ import com.github.retrooper.packetevents.protocol.player.ClientVersion;
  *   <li>Entity 类在不同版本增减字段（如 DATA_TICKS_FROZEN 是后加的）</li>
  *   <li>Display 类在不同版本增减字段</li>
  * </ul>
- *
- * <p>规则：以 MC 26.1.2（Entity 8字段, Display 15字段）为基准，
- * 其他版本按字段差值调整索引。
  */
 public class VersionMapper {
 
-    // MC 26.1.2 基准（从客户端 jar 反编译确认）
-    // Entity: 8 fields (0-7)
-    // Display: 15 fields (8-22)
-    // TextDisplay: 5 fields (23-27)
-    // ItemDisplay: 2 fields (23-24)
-    // BlockDisplay: 1 field (23)
+    // ===== 版本索引映射 =====
 
-    private static final int BASE_ENTITY_FIELDS = 8;
-    private static final int BASE_DISPLAY_FIELDS = 15;
+    // 1.19.4 - 1.20.1
+    private static final MetadataIndices V1_19_4 = new MetadataIndices(
+            22, 23, 24, 25, 26,  // TextDisplay: text, lineWidth, bgColor, textOpacity, styleFlags
+            22, 23, 22,          // ItemDisplay: item, itemTransform / BlockDisplay: blockState
+            11, 15               // Scale, Billboard
+    );
 
-    // 基准索引（MC 26.1.2）
-    private static final int BASE_TEXT = 23;
-    private static final int BASE_LINE_WIDTH = 24;
-    private static final int BASE_BACKGROUND_COLOR = 25;
-    private static final int BASE_TEXT_OPACITY = 26;
-    private static final int BASE_STYLE_FLAGS = 27;
-    private static final int BASE_ITEM = 23;
-    private static final int BASE_ITEM_TRANSFORM = 24;
-    private static final int BASE_BLOCK_STATE = 23;
-    private static final int BASE_SCALE = 14;
-    private static final int BASE_BILLBOARD = 15;
+    // 1.20.2 - 1.20.4
+    private static final MetadataIndices V1_20_2 = new MetadataIndices(
+            23, 24, 25, 26, 27,  // TextDisplay
+            23, 24, 23,          // Item/Block Display
+            11, 15               // Scale, Billboard
+    );
+
+    // 1.20.5 - 1.20.6
+    private static final MetadataIndices V1_20_5 = new MetadataIndices(
+            25, 26, 27, 28, 29,  // TextDisplay
+            25, 26, 25,          // Item/Block Display
+            11, 18               // Scale, Billboard
+    );
+
+    // 1.21+ (MC 26.1.2 使用这个)
+    private static final MetadataIndices V1_21 = new MetadataIndices(
+            25, 26, 27, 28, 29,  // TextDisplay
+            25, 26, 25,          // Item/Block Display
+            11, 18               // Scale, Billboard
+    );
 
     /**
      * 获取当前连接版本的 TextDisplay 元数据索引。
-     * <p>如果没有精确映射，使用基准值（26.1.2）。
      */
     public static MetadataIndices getIndices(ClientVersion version) {
-        // 目前只有 26.1.2 的精确数据
-        // 其他版本暂用基准值，后续按需补充
-        return DEFAULT;
+        if (version == null) return V1_21;
+
+        if (version.isNewerThanOrEquals(ClientVersion.V_1_21)) {
+            return V1_21;
+        } else if (version.isNewerThanOrEquals(ClientVersion.V_1_20_5)) {
+            return V1_20_5;
+        } else if (version.isNewerThanOrEquals(ClientVersion.V_1_20_2)) {
+            return V1_20_2;
+        } else {
+            return V1_19_4;
+        }
     }
 
     /**
@@ -80,20 +92,4 @@ public class VersionMapper {
             this.billboard = billboard;
         }
     }
-
-    // 默认值（MC 26.1.2 基准）
-    private static final MetadataIndices DEFAULT = new MetadataIndices(
-            BASE_TEXT, BASE_LINE_WIDTH, BASE_BACKGROUND_COLOR,
-            BASE_TEXT_OPACITY, BASE_STYLE_FLAGS,
-            BASE_ITEM, BASE_ITEM_TRANSFORM, BASE_BLOCK_STATE,
-            BASE_SCALE, BASE_BILLBOARD
-    );
-
-    // ===== 补充其他版本时在此添加 =====
-    // 示例：
-    // private static final MetadataIndices V1_20_4 = new MetadataIndices(
-    //         22, 23, 24, 25, 26,  // TextDisplay
-    //         22, 23, 22,          // Item/Block Display
-    //         11, 15               // Scale, Billboard (Entity 7字段时)
-    // );
 }

@@ -4,6 +4,8 @@ import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityData;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes;
 import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
+import com.github.retrooper.packetevents.protocol.player.ClientVersion;
+import com.github.retrooper.packetevents.protocol.player.User;
 import com.github.retrooper.packetevents.util.Vector3d;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityMetadata;
@@ -18,31 +20,9 @@ import java.util.UUID;
 
 /**
  * Text Display 实体工厂。
- *
- * <p>元数据索引（1.19.4+）：
- * <ul>
- *   <li>8-10: translation (Vector3f)</li>
- *   <li>11-13: scale (Vector3f)</li>
- *   <li>22: Text (Component)</li>
- *   <li>23: LineWidth (Int)</li>
- *   <li>24: BackgroundColor (Int ARGB)</li>
- *   <li>25: TextOpacity (Byte)</li>
- *   <li>26: StyleFlags (Byte)</li>
- *   <li>27: Billboard (Byte) — 0=FIXED, 1=VERTICAL, 2=HORIZONTAL, 3=CENTER</li>
- * </ul>
+ * <p>根据玩家客户端版本动态选择正确的元数据索引。
  */
 public class TextDisplayFactory implements DisplayEntityFactory {
-
-    // Display 基础
-    private static final int INDEX_SCALE = 11;
-    private static final int INDEX_BILLBOARD = 15;
-
-    // TextDisplay 专属（MC 26.1.2 验证通过）
-    private static final int INDEX_TEXT = 23;
-    private static final int INDEX_LINE_WIDTH = 24;
-    private static final int INDEX_BACKGROUND_COLOR = 25;
-    private static final int INDEX_TEXT_OPACITY = 26;
-    private static final int INDEX_STYLE_FLAGS = 27;
 
     @Override
     public void spawn(Object player, int entityId, double x, double y, double z, DisplayConfig config) {
@@ -58,7 +38,8 @@ public class TextDisplayFactory implements DisplayEntityFactory {
                 Optional.empty()
         );
 
-        WrapperPlayServerEntityMetadata metadata = createMetadata(entityId, config);
+        ClientVersion version = getPlayerVersion(player);
+        WrapperPlayServerEntityMetadata metadata = createMetadata(entityId, config, version);
 
         PacketEvents.getAPI().getPlayerManager().sendPacket(player, spawn);
         PacketEvents.getAPI().getPlayerManager().sendPacket(player, metadata);
@@ -74,36 +55,55 @@ public class TextDisplayFactory implements DisplayEntityFactory {
     @Override
     public void updateMetadata(Object player, int entityId, DisplayConfig config) {
         if (player == null) return;
-        WrapperPlayServerEntityMetadata metadata = createMetadata(entityId, config);
+        ClientVersion version = getPlayerVersion(player);
+        WrapperPlayServerEntityMetadata metadata = createMetadata(entityId, config, version);
         PacketEvents.getAPI().getPlayerManager().sendPacket(player, metadata);
     }
 
-    private WrapperPlayServerEntityMetadata createMetadata(int entityId, DisplayConfig config) {
+    /**
+     * 获取玩家客户端版本。
+     */
+    private ClientVersion getPlayerVersion(Object player) {
+        try {
+            User user = PacketEvents.getAPI().getPlayerManager().getUser(player);
+            if (user != null) {
+                return user.getClientVersion();
+            }
+        } catch (Exception ignored) {
+        }
+        return ClientVersion.V_1_21; // 默认最新版本
+    }
+
+    /**
+     * 创建元数据包（根据版本动态选择索引）。
+     */
+    private WrapperPlayServerEntityMetadata createMetadata(int entityId, DisplayConfig config, ClientVersion version) {
+        VersionMapper.MetadataIndices indices = VersionMapper.getIndices(version);
         List<EntityData<?>> metadata = new ArrayList<>();
 
         // 文本内容
         Component component = LegacyComponentSerializer.legacySection().deserialize(
                 config.text() != null ? config.text() : "");
-        metadata.add(new EntityData<>(INDEX_TEXT, EntityDataTypes.ADV_COMPONENT, component));
+        metadata.add(new EntityData<>(indices.text, EntityDataTypes.ADV_COMPONENT, component));
 
         // 行宽
-        metadata.add(new EntityData<>(INDEX_LINE_WIDTH, EntityDataTypes.INT, config.lineWidth()));
+        metadata.add(new EntityData<>(indices.lineWidth, EntityDataTypes.INT, config.lineWidth()));
 
         // 背景颜色
-        metadata.add(new EntityData<>(INDEX_BACKGROUND_COLOR, EntityDataTypes.INT, config.backgroundColor()));
+        metadata.add(new EntityData<>(indices.backgroundColor, EntityDataTypes.INT, config.backgroundColor()));
 
         // 文本透明度
-        metadata.add(new EntityData<>(INDEX_TEXT_OPACITY, EntityDataTypes.BYTE, config.textOpacity()));
+        metadata.add(new EntityData<>(indices.textOpacity, EntityDataTypes.BYTE, config.textOpacity()));
 
         // 样式标志
-        metadata.add(new EntityData<>(INDEX_STYLE_FLAGS, EntityDataTypes.BYTE, config.styleFlags()));
+        metadata.add(new EntityData<>(indices.styleFlags, EntityDataTypes.BYTE, config.styleFlags()));
 
         // Billboard 模式（3=CENTER，始终面向玩家）
-        metadata.add(new EntityData<>(INDEX_BILLBOARD, EntityDataTypes.BYTE, (byte) config.billboard().id));
+        metadata.add(new EntityData<>(indices.billboard, EntityDataTypes.BYTE, (byte) config.billboard().id));
 
         // 缩放
         if (config.scaleX() != 1f || config.scaleY() != 1f || config.scaleZ() != 1f) {
-            metadata.add(new EntityData<>(INDEX_SCALE, EntityDataTypes.VECTOR3F,
+            metadata.add(new EntityData<>(indices.scale, EntityDataTypes.VECTOR3F,
                     new com.github.retrooper.packetevents.util.Vector3f(
                             config.scaleX(), config.scaleY(), config.scaleZ())));
         }
