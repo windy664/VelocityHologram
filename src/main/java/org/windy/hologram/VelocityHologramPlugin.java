@@ -78,7 +78,12 @@ public class VelocityHologramPlugin {
 
     @Subscribe
     public void onProxyInit(ProxyInitializeEvent event) {
-        // packetevents 智能初始化：已有则复用，没有则自己初始化
+        long startTime = System.currentTimeMillis();
+
+        // 打印启动横幅
+        org.windy.hologram.utils.BannerUtils.printBanner(logger, "1.2.0");
+
+        // packetevents 智能初始化
         var peAPI = com.github.retrooper.packetevents.PacketEvents.getAPI();
         if (peAPI == null) {
             var pluginContainer = proxy.getPluginManager()
@@ -91,14 +96,14 @@ public class VelocityHologramPlugin {
                 peAPI.load();
                 peAPI.init();
                 peSelfInitialized = true;
-                logger.info("[VelocityHologram] PacketEvents 已自行初始化");
+                org.windy.hologram.utils.BannerUtils.printModule(logger, "PacketEvents", true);
             }
         } else {
-            logger.info("[VelocityHologram] 复用已有的 PacketEvents 实例");
+            org.windy.hologram.utils.BannerUtils.printModule(logger, "PacketEvents (复用)", true);
         }
 
         if (peAPI == null) {
-            logger.error("[VelocityHologram] PacketEvents 初始化失败，插件无法启用");
+            logger.error("§c✗ PacketEvents 初始化失败，插件无法启用");
             return;
         }
 
@@ -221,9 +226,19 @@ public class VelocityHologramPlugin {
             if (st != null) st.setServer(server);
         }
 
-        logger.info("[VelocityHologram] 已启用 v1.2.0（多页/动作扩展/命令补全）");
-        logger.info("[VelocityHologram] 已加载 " + hologramManager.getAllHolograms().size() + " 个悬浮字");
-        logger.info("[VelocityHologram] 已注册 " + playerTracker.getAllStates().size() + " 个在线玩家");
+        // 打印模块状态
+        org.windy.hologram.utils.BannerUtils.printModule(logger, "RCON", rconPool != null);
+        org.windy.hologram.utils.BannerUtils.printModule(logger, "伤害显示", pluginConfig.isDamageDisplayEnabled());
+        org.windy.hologram.utils.BannerUtils.printModule(logger, "治疗显示", pluginConfig.isHealingDisplayEnabled());
+        org.windy.hologram.utils.BannerUtils.printModule(logger, "更新检查器", pluginConfig.isCheckForUpdates());
+
+        // 打印统计
+        org.windy.hologram.utils.BannerUtils.printStats(logger,
+                hologramManager.getAllHolograms().size(),
+                playerTracker.getAllStates().size());
+
+        // 打印完成
+        org.windy.hologram.utils.BannerUtils.printDone(logger, startTime);
 
         // 延迟触发一次可见性，让已在线玩家看到已有悬浮字
         proxy.getScheduler().buildTask(this, () -> {
@@ -233,6 +248,7 @@ public class VelocityHologramPlugin {
 
     @Subscribe
     public void onProxyShutdown(ProxyShutdownEvent event) {
+        logger.info("§7正在关闭 VelocityHolograms...");
         if (hologramManager != null && hologramLoader != null) {
             for (Hologram hologram : hologramManager.getAllHolograms()) {
                 hologramLoader.save(hologram);
@@ -246,7 +262,7 @@ public class VelocityHologramPlugin {
         if (peSelfInitialized) {
             com.github.retrooper.packetevents.PacketEvents.getAPI().terminate();
         }
-        logger.info("[VelocityHologram] 已关闭");
+        logger.info("§a✓ 插件已关闭");
     }
 
     @Subscribe
