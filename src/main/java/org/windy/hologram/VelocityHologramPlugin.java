@@ -66,6 +66,7 @@ public class VelocityHologramPlugin {
     private DisplayFactoryRegistry displayRegistry;
     private PluginConfig pluginConfig;
     private RconPool rconPool;
+    private org.windy.hologram.listener.WorldListener worldListener;
     private boolean peSelfInitialized = false;
 
     @Inject
@@ -150,6 +151,11 @@ public class VelocityHologramPlugin {
                 .registerListener(new HologramPacketListener(playerTracker, hologramManager));
         peAPI.getEventManager()
                 .registerListener(clickHandler);
+
+        // 注册世界监听器（通过 packetevents 监听维度切换）
+        org.windy.hologram.listener.WorldListener worldListener = new org.windy.hologram.listener.WorldListener(hologramManager);
+        peAPI.getEventManager().registerListener(worldListener);
+        this.worldListener = worldListener;
 
         // 初始化伤害/治疗显示功能
         if (pluginConfig.isDamageDisplayEnabled()) {
@@ -269,5 +275,8 @@ public class VelocityHologramPlugin {
         Player player = event.getPlayer();
         playerTracker.remove(player.getUniqueId());
         hologramManager.onPlayerDisconnect(player.getUniqueId());
+        if (worldListener != null) {
+            worldListener.onPlayerDisconnect(player.getUniqueId());
+        }
     }
 }
