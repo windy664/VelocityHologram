@@ -175,6 +175,9 @@ public class VelocityHologramPlugin {
                 command
         );
 
+        // 注册玩家监听器
+        proxy.getEventManager().register(this, new org.windy.hologram.listener.PlayerListener(hologramManager, playerTracker, proxy, this));
+
         // 启动异步可见性更新（每 500ms）
         proxy.getScheduler().buildTask(this, () -> {
             try {

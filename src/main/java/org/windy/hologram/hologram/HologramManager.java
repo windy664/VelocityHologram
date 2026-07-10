@@ -253,7 +253,7 @@ public class HologramManager {
      */
     public void onPlayerDisconnect(UUID playerId) {
         for (Hologram hologram : holograms.values()) {
-            hologram.hideFrom(playerId);
+            hologram.onQuit(playerId);
         }
     }
 
@@ -271,5 +271,230 @@ public class HologramManager {
      */
     public DisplayFactoryRegistry getDisplayRegistry() {
         return displayRegistry;
+    }
+
+    // ===== 批量操作（对标 DecentHolograms） =====
+
+    /**
+     * 更新指定悬浮字的可见性。
+     */
+    public void updateVisibility(Hologram hologram) {
+        for (Map.Entry<UUID, PlayerState> entry : playerTracker.getAllStates().entrySet()) {
+            UUID playerId = entry.getKey();
+            PlayerState state = entry.getValue();
+            updateVisibility(playerId, state, hologram);
+        }
+    }
+
+    /**
+     * 更新指定玩家的可见性。
+     */
+    public void updateVisibility(UUID playerId) {
+        PlayerState state = playerTracker.get(playerId);
+        if (state == null) return;
+        for (Hologram hologram : holograms.values()) {
+            updateVisibility(playerId, state, hologram);
+        }
+    }
+
+    /**
+     * 更新指定玩家对特定悬浮字的可见性。
+     */
+    public void updateVisibility(UUID playerId, Hologram hologram) {
+        PlayerState state = playerTracker.get(playerId);
+        if (state == null) return;
+        updateVisibility(playerId, state, hologram);
+    }
+
+    /**
+     * 内部方法：更新可见性。
+     */
+    private void updateVisibility(UUID playerId, PlayerState state, Hologram hologram) {
+        // 检查启用状态
+        if (!hologram.isEnabled()) {
+            if (hologram.isObserver(playerId)) {
+                hologram.hideFrom(playerId);
+            }
+            return;
+        }
+
+        // 检查每玩家可见性
+        if (hologram.isHideState(playerId)) {
+            if (hologram.isObserver(playerId)) {
+                hologram.hideFrom(playerId);
+            }
+            return;
+        }
+
+        // 检查默认可见状态
+        if (!hologram.isDefaultVisibleState() && !hologram.isShowState(playerId)) {
+            if (hologram.isObserver(playerId)) {
+                hologram.hideFrom(playerId);
+            }
+            return;
+        }
+
+        IHologram.HologramPos pos = hologram.getPosition();
+        String holoServer = pos.server();
+        String playerServer = state.getServer();
+
+        // 服务器检查
+        boolean serverMatch = holoServer.isEmpty() || holoServer.equals(playerServer);
+        if (!serverMatch) {
+            if (hologram.isObserver(playerId)) {
+                hologram.hideFrom(playerId);
+            }
+            return;
+        }
+
+        // 维度检查
+        if (!pos.dimension().equals(state.getDimension())) {
+            if (hologram.isObserver(playerId)) {
+                hologram.hideFrom(playerId);
+            }
+            return;
+        }
+
+        // 权限检查
+        if (!checkVisibilityPermission(playerId, hologram)) {
+            if (hologram.isObserver(playerId)) {
+                hologram.hideFrom(playerId);
+            }
+            return;
+        }
+
+        // ALWAYS_VISIBLE flag 跳过距离检查
+        if (hologram.hasFlag("always_visible")) {
+            if (!hologram.isObserver(playerId)) {
+                hologram.showTo(playerId);
+            }
+            return;
+        }
+
+        // 距离检查
+        double dx = pos.x() - state.getX();
+        double dy = pos.y() - state.getY();
+        double dz = pos.z() - state.getZ();
+        double distanceSq = dx * dx + dy * dy + dz * dz;
+
+        double displayDistSq = hologram.getViewDistance() * hologram.getViewDistance();
+        if (distanceSq <= displayDistSq) {
+            if (!hologram.isObserver(playerId)) {
+                hologram.showTo(playerId);
+            }
+        } else {
+            if (hologram.isObserver(playerId)) {
+                hologram.hideFrom(playerId);
+            }
+        }
+    }
+
+    /**
+     * 显示所有悬浮字给指定玩家。
+     */
+    public void showAll(UUID playerId) {
+        for (Hologram hologram : holograms.values()) {
+            if (hologram.isEnabled() && !hologram.isHideState(playerId)) {
+                hologram.showTo(playerId);
+            }
+        }
+    }
+
+    /**
+     * 隐藏所有悬浮字给指定玩家。
+     */
+    public void hideAll(UUID playerId) {
+        for (Hologram hologram : holograms.values()) {
+            hologram.hideFrom(playerId);
+        }
+    }
+
+    /**
+     * 点击处理。
+     */
+    public boolean onClick(UUID playerId, int entityId, String clickType) {
+        for (Hologram hologram : holograms.values()) {
+            if (hologram.onClick(playerId, entityId, clickType)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 玩家退出处理。
+     */
+    public void onQuit(UUID playerId) {
+        for (Hologram hologram : holograms.values()) {
+            hologram.onQuit(playerId);
+        }
+    }
+
+    /**
+     * 重新加载所有悬浮字。
+     */
+    public void reload() {
+        for (Hologram hologram : holograms.values()) {
+            hologram.destroy();
+        }
+        holograms.clear();
+        byServer.clear();
+    }
+
+    /**
+     * 销毁所有悬浮字。
+     */
+    public void destroy() {
+        for (Hologram hologram : holograms.values()) {
+            hologram.destroy();
+        }
+        holograms.clear();
+        byServer.clear();
+    }
+
+    /**
+     * 注册悬浮字。
+     */
+    public void registerHologram(Hologram hologram) {
+        holograms.put(hologram.getName(), hologram);
+        byServer.computeIfAbsent(hologram.getPosition().server(), k -> new ConcurrentHashMap<>())
+                .put(hologram.getName(), hologram);
+    }
+
+    /**
+     * 检查是否包含悬浮字。
+     */
+    public boolean containsHologram(String name) {
+        return holograms.containsKey(name);
+    }
+
+    /**
+     * 获取所有悬浮字名称。
+     */
+    public java.util.Set<String> getHologramNames() {
+        return holograms.keySet();
+    }
+
+    /**
+     * 生成临时悬浮字行。
+     */
+    public Hologram spawnTemporaryHologramLine(double x, double y, double z,
+                                                String dimension, String server,
+                                                String content, long durationMs) {
+        String name = "temp_" + System.currentTimeMillis();
+        Hologram hologram = createHologram(name, x, y, z, dimension, server);
+        hologram.addLine(content);
+        hologram.addFlag("always_visible");
+
+        // 定时删除
+        new Thread(() -> {
+            try {
+                Thread.sleep(durationMs);
+                removeHologram(name);
+            } catch (InterruptedException ignored) {
+            }
+        }).start();
+
+        return hologram;
     }
 }

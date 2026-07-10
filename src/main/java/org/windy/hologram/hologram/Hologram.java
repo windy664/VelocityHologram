@@ -469,4 +469,259 @@ public class Hologram implements IHologram {
         }
         return -1;
     }
+
+    // ===== 批量操作（对标 DecentHolograms） =====
+
+    /**
+     * 获取页面数量。
+     */
+    public int size() { return pages.size(); }
+
+    /**
+     * 检查可见状态（是否有观察者）。
+     */
+    public boolean isVisibleState() { return !observers.isEmpty(); }
+
+    /**
+     * 获取指定页的观看者。
+     */
+    public Set<UUID> getViewerPlayers(int pageIndex) {
+        return observers.stream()
+                .filter(uuid -> getPlayerPage(uuid) == pageIndex)
+                .collect(java.util.stream.Collectors.toSet());
+    }
+
+    /**
+     * 获取所有观看者。
+     */
+    public Set<UUID> getViewerPlayers() {
+        return new java.util.HashSet<>(observers);
+    }
+
+    /**
+     * 显示给指定玩家（指定页）。
+     */
+    public boolean show(UUID playerId, int pageIndex) {
+        if (!enabled) return false;
+        if (isHideState(playerId)) return false;
+        if (!defaultVisibleState && !isShowState(playerId)) return false;
+
+        Page page = getPage(pageIndex);
+        if (page == null || page.getLineCount() == 0) return false;
+
+        // 先隐藏当前页
+        int currentPage = getPlayerPage(playerId);
+        if (currentPage != pageIndex) {
+            Page oldPage = getPage(currentPage);
+            if (oldPage != null) {
+                oldPage.hideFrom(playerId, displayRegistry, playerResolver);
+            }
+        }
+
+        // 显示新页
+        playerPages.put(playerId, pageIndex);
+        page.showTo(playerId, position.x(), position.y(), position.z(),
+                lineSpacing, displayRegistry, placeholderManager, playerResolver);
+
+        if (observers.add(playerId)) {
+            // 新观察者
+        }
+        return true;
+    }
+
+    /**
+     * 显示给所有在线玩家。
+     * <p>注意：在代理端，需要通过 HologramManager 调用。
+     */
+    public void showAll() {
+        // 代理端实现：遍历所有观察者
+        for (UUID playerId : new java.util.HashSet<>(observers)) {
+            show(playerId, getPlayerPage(playerId));
+        }
+    }
+
+    /**
+     * 隐藏指定玩家。
+     */
+    public void hide(UUID playerId) {
+        if (observers.contains(playerId)) {
+            int pageIndex = getPlayerPage(playerId);
+            Page page = getPage(pageIndex);
+            if (page != null) {
+                page.hideFrom(playerId, displayRegistry, playerResolver);
+            }
+            observers.remove(playerId);
+        }
+    }
+
+    /**
+     * 隐藏所有玩家。
+     */
+    public void hideAll() {
+        for (UUID playerId : new java.util.HashSet<>(observers)) {
+            hide(playerId);
+        }
+    }
+
+    /**
+     * 更新指定玩家。
+     */
+    public void update(UUID playerId) {
+        if (hasFlag("disable_updates")) return;
+        if (!observers.contains(playerId)) return;
+        if (isHideState(playerId)) return;
+
+        int pageIndex = getPlayerPage(playerId);
+        Page page = getPage(pageIndex);
+        if (page != null) {
+            page.update(playerId, position.x(), position.y(), position.z(),
+                    lineSpacing, displayRegistry, placeholderManager, playerResolver);
+        }
+    }
+
+    /**
+     * 更新所有玩家。
+     */
+    public void updateAll() {
+        if (hasFlag("disable_updates")) return;
+        for (UUID playerId : observers) {
+            update(playerId);
+        }
+    }
+
+    /**
+     * 更新指定玩家的动画。
+     */
+    public void updateAnimations(UUID playerId) {
+        if (hasFlag("disable_animations")) return;
+        if (!observers.contains(playerId)) return;
+        if (isHideState(playerId)) return;
+
+        int pageIndex = getPlayerPage(playerId);
+        Page page = getPage(pageIndex);
+        if (page != null) {
+            if (page.tickAnimation()) {
+                page.update(playerId, position.x(), position.y(), position.z(),
+                        lineSpacing, displayRegistry, placeholderManager, playerResolver);
+            }
+        }
+    }
+
+    /**
+     * 更新所有玩家的动画。
+     */
+    public void updateAnimationsAll() {
+        if (hasFlag("disable_animations")) return;
+        for (UUID playerId : observers) {
+            updateAnimations(playerId);
+        }
+    }
+
+    /**
+     * 重新对齐行（用于传送后）。
+     */
+    public void realignLines() {
+        for (Page page : pages) {
+            page.realignLines();
+        }
+    }
+
+    // ===== 范围检查 =====
+
+    /**
+     * 检查玩家是否在显示范围内。
+     */
+    public boolean isInDisplayRange(double playerX, double playerY, double playerZ) {
+        double dx = position.x() - playerX;
+        double dy = position.y() - playerY;
+        double dz = position.z() - playerZ;
+        return dx * dx + dy * dy + dz * dz <= viewDistance * viewDistance;
+    }
+
+    /**
+     * 检查玩家是否在更新范围内。
+     */
+    public boolean isInUpdateRange(double playerX, double playerY, double playerZ) {
+        double dx = position.x() - playerX;
+        double dy = position.y() - playerY;
+        double dz = position.z() - playerZ;
+        return dx * dx + dy * dy + dz * dz <= updateDistance * updateDistance;
+    }
+
+    // ===== 点击处理 =====
+
+    /**
+     * 处理点击事件。
+     */
+    public boolean onClick(UUID playerId, int entityId, String clickType) {
+        if (hasFlag("disable_actions")) return false;
+
+        int pageIndex = findPageByEntityId(entityId);
+        if (pageIndex < 0) return false;
+
+        Page page = getPage(pageIndex);
+        if (page == null) return false;
+
+        // 执行页面动作
+        page.executeActions(playerId, clickType);
+
+        // 找到对应的行并执行动作
+        for (HologramLine line : page.getLines()) {
+            if (line.getEntityId() == entityId) {
+                Action action = null;
+                switch (clickType) {
+                    case "left": action = line.getLeftClickAction(); break;
+                    case "right": action = line.getRightClickAction(); break;
+                    case "shift_left": action = line.getShiftLeftClickAction(); break;
+                    case "shift_right": action = line.getShiftRightClickAction(); break;
+                }
+                if (action != null) {
+                    action.execute(playerId);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 处理玩家退出。
+     */
+    public void onQuit(UUID playerId) {
+        hide(playerId);
+        removeHidePlayer(playerId);
+        removeShowPlayer(playerId);
+        playerPages.remove(playerId);
+    }
+
+    /**
+     * 启用悬浮字。
+     */
+    public void enable() {
+        this.enabled = true;
+        this.disableCause = DisableCause.NONE;
+    }
+
+    /**
+     * 删除悬浮字。
+     */
+    public void delete() {
+        destroy();
+    }
+
+    // ===== 默认可见状态 =====
+
+    private boolean defaultVisibleState = true;
+
+    public boolean isDefaultVisibleState() { return defaultVisibleState; }
+    public void setDefaultVisibleState(boolean defaultVisibleState) { this.defaultVisibleState = defaultVisibleState; }
+
+    /**
+     * 检查玩家是否可见（考虑 hide/show 状态）。
+     */
+    public boolean canShow(UUID playerId) {
+        if (isHideState(playerId)) return false;
+        if (!defaultVisibleState && !isShowState(playerId)) return false;
+        return true;
+    }
 }

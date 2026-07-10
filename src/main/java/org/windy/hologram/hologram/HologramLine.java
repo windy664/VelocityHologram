@@ -1,10 +1,15 @@
 package org.windy.hologram.hologram;
 
 import org.windy.hologram.action.Action;
+import org.windy.hologram.action.ActionFactory;
+import org.windy.hologram.animation.GradientParser;
 import org.windy.hologram.animation.TextAnimation;
 import org.windy.hologram.api.IHologramLine;
 import org.windy.hologram.display.DisplayConfig;
+import org.windy.hologram.display.DisplayEntityFactory;
 import org.windy.hologram.display.DisplayEntityType;
+import org.windy.hologram.display.DisplayFactoryRegistry;
+import org.windy.hologram.placeholder.PlaceholderManager;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -195,5 +200,182 @@ public class HologramLine implements IHologramLine {
     public double getWorldY(double baseY, double lineSpacing) {
         double spacing = (lineHeight > 0) ? lineHeight : (offsetY > 0) ? offsetY : lineSpacing;
         return baseY - (index * spacing);
+    }
+
+    // ===== 启用/禁用 =====
+
+    private boolean enabled = true;
+
+    public void enable() { this.enabled = true; }
+    public void disable() { this.enabled = false; }
+    public boolean isEnabled() { return enabled; }
+
+    // ===== 类型 =====
+
+    /**
+     * 获取行类型。
+     */
+    public DisplayEntityType getType() { return displayConfig.type(); }
+
+    /**
+     * 获取实体ID数组（单行只有一个实体）。
+     */
+    public int[] getEntityIds() { return new int[]{entityId}; }
+
+    // ===== 权限检查 =====
+
+    /**
+     * 检查玩家是否有权限查看此行。
+     */
+    public boolean hasPermission(java.util.UUID playerId, HologramManager.PermissionChecker checker) {
+        if (permission == null || permission.isEmpty()) return true;
+        if (checker == null) return true;
+        return checker.hasPermission(playerId, permission);
+    }
+
+    /**
+     * 检查是否可以显示给玩家。
+     */
+    public boolean canShow(java.util.UUID playerId, HologramManager.PermissionChecker checker) {
+        if (!enabled) return false;
+        if (hasFlag("disable")) return false;
+        if (!hasPermission(playerId, checker)) return false;
+        return true;
+    }
+
+    // ===== 范围检查 =====
+
+    /**
+     * 检查玩家是否在显示范围内。
+     */
+    public boolean isInDisplayRange(double playerX, double playerY, double playerZ,
+                                     double lineX, double lineY, double lineZ,
+                                     double displayRange) {
+        double y = getWorldY(lineY, 0.3);
+        double dx = playerX - lineX;
+        double dy = playerY - y;
+        double dz = playerZ - lineZ;
+        return dx * dx + dy * dy + dz * dz <= displayRange * displayRange;
+    }
+
+    /**
+     * 检查玩家是否在更新范围内。
+     */
+    public boolean isInUpdateRange(double playerX, double playerY, double playerZ,
+                                    double lineX, double lineY, double lineZ,
+                                    double updateRange) {
+        double y = getWorldY(lineY, 0.3);
+        double dx = playerX - lineX;
+        double dy = playerY - y;
+        double dz = playerZ - lineZ;
+        return dx * dx + dy * dy + dz * dz <= updateRange * updateRange;
+    }
+
+    // ===== 显示/隐藏/更新 =====
+
+    /**
+     * 显示给玩家。
+     */
+    public void show(java.util.UUID playerId, double x, double y, double z,
+                     DisplayFactoryRegistry registry, PlaceholderManager placeholders,
+                     java.util.function.Function<java.util.UUID, Object> playerResolver) {
+        if (!enabled) return;
+        DisplayConfig config = resolveDisplayConfig(playerId, placeholders);
+        DisplayEntityFactory factory = registry.getOrNull(getEntityType());
+        Object player = playerResolver.apply(playerId);
+        if (factory != null && player != null) {
+            factory.spawn(player, entityId, x, getWorldY(y, 0.3), z, config);
+        }
+    }
+
+    /**
+     * 隐藏给玩家。
+     */
+    public void hide(java.util.UUID playerId, DisplayFactoryRegistry registry,
+                     java.util.function.Function<java.util.UUID, Object> playerResolver) {
+        DisplayEntityFactory factory = registry.getOrNull(getEntityType());
+        Object player = playerResolver.apply(playerId);
+        if (factory != null && player != null) {
+            factory.despawn(player, entityId);
+        }
+    }
+
+    /**
+     * 更新给玩家。
+     */
+    public void update(java.util.UUID playerId, double x, double y, double z,
+                       DisplayFactoryRegistry registry, PlaceholderManager placeholders,
+                       java.util.function.Function<java.util.UUID, Object> playerResolver) {
+        if (!enabled) return;
+        DisplayConfig config = resolveDisplayConfig(playerId, placeholders);
+        DisplayEntityFactory factory = registry.getOrNull(getEntityType());
+        Object player = playerResolver.apply(playerId);
+        if (factory != null && player != null) {
+            factory.updateMetadata(player, entityId, config);
+        }
+    }
+
+    /**
+     * 解析显示配置（占位符 + 渐变）。
+     */
+    private DisplayConfig resolveDisplayConfig(java.util.UUID playerId, PlaceholderManager placeholders) {
+        DisplayConfig base = getDisplayConfig();
+        if (base.type() != DisplayEntityType.TEXT_DISPLAY) return base;
+
+        String text = getAnimationText();
+        if (placeholders != null) {
+            text = placeholders.replace(text, playerId);
+        }
+        if (GradientParser.hasGradient(text)) {
+            text = GradientParser.applyGradient(text);
+        }
+        if (text.equals(base.text())) return base;
+
+        return DisplayConfig.builder(base.type())
+                .text(text)
+                .billboard(base.billboard())
+                .scale(base.scaleX(), base.scaleY(), base.scaleZ())
+                .backgroundColor(base.backgroundColor())
+                .textOpacity(base.textOpacity())
+                .styleFlags(base.styleFlags())
+                .lineWidth(base.lineWidth())
+                .build();
+    }
+
+    // ===== 序列化 =====
+
+    /**
+     * 序列化为 Map。
+     */
+    public java.util.Map<String, Object> serializeToMap() {
+        java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+        map.put("type", displayConfig.type().toConfig());
+        if (displayConfig.type() == DisplayEntityType.TEXT_DISPLAY) {
+            map.put("text", rawText);
+        } else if (displayConfig.type() == DisplayEntityType.ITEM_DISPLAY) {
+            map.put("item", displayConfig.itemId());
+        } else if (displayConfig.type() == DisplayEntityType.BLOCK_DISPLAY) {
+            map.put("block", displayConfig.blockId());
+        } else if (displayConfig.type() == DisplayEntityType.ENTITY) {
+            map.put("entity", displayConfig.blockId());
+        } else if (displayConfig.type() == DisplayEntityType.HEAD || displayConfig.type() == DisplayEntityType.SMALLHEAD) {
+            map.put("head", displayConfig.blockId());
+        } else if (displayConfig.type() == DisplayEntityType.ICON) {
+            map.put("icon", displayConfig.blockId());
+        }
+
+        if (offsetX != 0) map.put("offset-x", offsetX);
+        if (offsetY != 0) map.put("offset-y", offsetY);
+        if (offsetZ != 0) map.put("offset-z", offsetZ);
+        if (lineHeight > 0) map.put("line-height", lineHeight);
+        if (permission != null) map.put("permission", permission);
+        if (!flags.isEmpty()) map.put("flags", new java.util.ArrayList<>(flags));
+
+        if (leftClickAction != null) map.put("left-click", ActionFactory.serialize(leftClickAction));
+        if (rightClickAction != null) map.put("right-click", ActionFactory.serialize(rightClickAction));
+        if (shiftLeftClickAction != null) map.put("shift-left-click", ActionFactory.serialize(shiftLeftClickAction));
+        if (shiftRightClickAction != null) map.put("shift-right-click", ActionFactory.serialize(shiftRightClickAction));
+
+        return map;
     }
 }

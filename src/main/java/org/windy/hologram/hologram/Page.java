@@ -297,6 +297,30 @@ public class Page {
     }
 
     /**
+     * 清除指定类型的页面动作。
+     */
+    public void clearActions(String clickType) {
+        pageActions.remove(clickType.toLowerCase());
+    }
+
+    /**
+     * 检查是否有页面动作。
+     */
+    public boolean hasActions() {
+        return !pageActions.isEmpty();
+    }
+
+    /**
+     * 执行页面动作。
+     */
+    public void executeActions(UUID playerId, String clickType) {
+        Action action = pageActions.get(clickType.toLowerCase());
+        if (action != null) {
+            action.execute(playerId);
+        }
+    }
+
+    /**
      * 检查本页是否包含指定实体 ID。
      */
     public boolean containsEntity(int entityId) {
@@ -304,5 +328,97 @@ public class Page {
             if (line.getEntityId() == entityId) return true;
         }
         return false;
+    }
+
+    /**
+     * 检查是否有可点击的行。
+     */
+    public boolean isClickable() {
+        for (HologramLine line : lines) {
+            if (line.getLeftClickAction() != null || line.getRightClickAction() != null
+                    || line.getShiftLeftClickAction() != null || line.getShiftRightClickAction() != null) {
+                return true;
+            }
+        }
+        return !pageActions.isEmpty();
+    }
+
+    /**
+     * 获取可点击实体ID。
+     */
+    public int getClickableEntityId(int lineIndex) {
+        if (lineIndex >= 0 && lineIndex < lines.size()) {
+            return lines.get(lineIndex).getEntityId();
+        }
+        return -1;
+    }
+
+    /**
+     * 获取页面高度。
+     */
+    public double getHeight(double lineSpacing) {
+        if (lines.isEmpty()) return 0;
+        double minY = Double.MAX_VALUE;
+        double maxY = Double.MIN_VALUE;
+        for (HologramLine line : lines) {
+            double y = line.getWorldY(0, lineSpacing);
+            minY = Math.min(minY, y);
+            maxY = Math.max(maxY, y);
+        }
+        return maxY - minY;
+    }
+
+    /**
+     * 重新对齐行。
+     */
+    public void realignLines() {
+        for (int i = 0; i < lines.size(); i++) {
+            lines.get(i).setIndex(i);
+        }
+    }
+
+    /**
+     * 获取页面中心位置。
+     */
+    public double[] getCenter(double baseX, double baseY, double baseZ, double lineSpacing) {
+        if (lines.isEmpty()) return new double[]{baseX, baseY, baseZ};
+        double minY = Double.MAX_VALUE;
+        double maxY = Double.MIN_VALUE;
+        for (HologramLine line : lines) {
+            double y = line.getWorldY(baseY, lineSpacing);
+            minY = Math.min(minY, y);
+            maxY = Math.max(maxY, y);
+        }
+        return new double[]{baseX, (minY + maxY) / 2, baseZ};
+    }
+
+    /**
+     * 获取下一行位置。
+     */
+    public double getNextLineY(double baseY, double lineSpacing) {
+        if (lines.isEmpty()) return baseY;
+        HologramLine lastLine = lines.get(lines.size() - 1);
+        return lastLine.getWorldY(baseY, lineSpacing) - lineSpacing;
+    }
+
+    /**
+     * 克隆页面。
+     */
+    public Page clone(int newIndex) {
+        Page cloned = new Page(newIndex);
+        for (HologramLine line : lines) {
+            HologramLine clonedLine = new HologramLine(line.getIndex(), line.getDisplayConfig());
+            clonedLine.setOffsetX(line.getOffsetX());
+            clonedLine.setOffsetY(line.getOffsetY());
+            clonedLine.setOffsetZ(line.getOffsetZ());
+            clonedLine.setLineHeight(line.getLineHeight());
+            clonedLine.setPermission(line.getPermission());
+            for (String flag : line.getFlags()) {
+                clonedLine.addFlag(flag);
+            }
+            cloned.lines.add(clonedLine);
+        }
+        cloned.pageActions.putAll(pageActions);
+        return cloned;
     }
 }
