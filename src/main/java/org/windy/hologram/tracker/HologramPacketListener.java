@@ -7,6 +7,8 @@ import com.github.retrooper.packetevents.event.PacketSendEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.protocol.packettype.PacketTypeCommon;
 import com.github.retrooper.packetevents.protocol.player.User;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerJoinGame;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerRespawn;
 import org.windy.hologram.hologram.HologramManager;
 
 import java.util.UUID;
@@ -27,8 +29,7 @@ public class HologramPacketListener extends PacketListenerAbstract {
     }
 
     /**
-     * 拦截客户端→服务端包。
-     * <p>追踪玩家坐标。
+     * 拦截客户端→服务端包。追踪玩家坐标。
      */
     @Override
     public void onPacketReceive(PacketReceiveEvent event) {
@@ -38,15 +39,13 @@ public class HologramPacketListener extends PacketListenerAbstract {
 
         PacketTypeCommon type = event.getPacketType();
 
-        // 追踪坐标
         if (isMovement(type)) {
             handleMovement(event, user, name);
         }
     }
 
     /**
-     * 拦截服务端→客户端包。
-     * <p>追踪维度变化。
+     * 拦截服务端→客户端包。追踪维度变化。
      */
     @Override
     public void onPacketSend(PacketSendEvent event) {
@@ -56,12 +55,9 @@ public class HologramPacketListener extends PacketListenerAbstract {
 
         PacketTypeCommon type = event.getPacketType();
 
-        // 追踪维度（Join Game 包）
         if (type == PacketType.Play.Server.JOIN_GAME) {
             handleJoinGame(event, user, name);
-        }
-        // 追踪维度（Respawn 包）
-        else if (type == PacketType.Play.Server.RESPAWN) {
+        } else if (type == PacketType.Play.Server.RESPAWN) {
             handleRespawn(event, user, name);
         }
     }
@@ -85,7 +81,6 @@ public class HologramPacketListener extends PacketListenerAbstract {
 
             com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.resetReaderIndex(buf);
 
-            // 获取或创建玩家状态
             UUID playerId = user.getUUID();
             if (playerId != null) {
                 PlayerState state = playerTracker.getOrCreate(playerId);
@@ -98,32 +93,83 @@ public class HologramPacketListener extends PacketListenerAbstract {
 
     /**
      * 从 Join Game 包中提取维度。
-     * <p>Join Game 包格式复杂，包含 NBT 数据。
-     * 简化实现：暂时使用默认维度。
+     * <p>使用 packetevents 的 WrapperPlayServerJoinGame 解析。
      */
     private void handleJoinGame(PacketSendEvent event, User user, String name) {
-        // TODO: 解析 Join Game 包的 Dimension Type 字段
-        // 暂时设置为默认维度
-        UUID playerId = user.getUUID();
-        if (playerId != null) {
-            PlayerState state = playerTracker.getOrCreate(playerId);
-            state.setName(name);
-            state.setDimension("minecraft:overworld");
+        try {
+            WrapperPlayServerJoinGame packet = new WrapperPlayServerJoinGame(event);
+            String dimension = normalizeDimension(packet.getWorldName());
+
+            UUID playerId = user.getUUID();
+            if (playerId != null) {
+                PlayerState state = playerTracker.getOrCreate(playerId);
+                state.setName(name);
+                state.setDimension(dimension);
+            }
+        } catch (Exception e) {
+            // 降级：使用默认维度
+            UUID playerId = user.getUUID();
+            if (playerId != null) {
+                PlayerState state = playerTracker.getOrCreate(playerId);
+                state.setName(name);
+                state.setDimension("minecraft:overworld");
+            }
         }
     }
 
     /**
      * 从 Respawn 包中提取维度。
-     * <p>Respawn 包格式复杂，包含 NBT 数据。
-     * 简化实现：暂时使用默认维度。
+     * <p>使用 packetevents 的 WrapperPlayServerRespawn 解析。
      */
     private void handleRespawn(PacketSendEvent event, User user, String name) {
-        // TODO: 解析 Respawn 包的 Dimension Type 字段
-        // 暂时设置为默认维度
-        UUID playerId = user.getUUID();
-        if (playerId != null) {
-            PlayerState state = playerTracker.getOrCreate(playerId);
-            state.setName(name);
+        try {
+            WrapperPlayServerRespawn packet = new WrapperPlayServerRespawn(event);
+            String worldName = packet.getWorldName().orElse(null);
+            String dimension = normalizeDimension(worldName);
+
+            UUID playerId = user.getUUID();
+            if (playerId != null) {
+                PlayerState state = playerTracker.getOrCreate(playerId);
+                state.setName(name);
+                state.setDimension(dimension);
+            }
+        } catch (Exception e) {
+            // 降级：保持当前维度
+            UUID playerId = user.getUUID();
+            if (playerId != null) {
+                PlayerState state = playerTracker.getOrCreate(playerId);
+                state.setName(name);
+            }
+        }
+    }
+
+    /**
+     * 标准化维度名。
+     * <p>MC 不同版本维度格式不同，统一为命名空间格式。
+     */
+    private String normalizeDimension(String dimension) {
+        if (dimension == null || dimension.isEmpty()) {
+            return "minecraft:overworld";
+        }
+
+        // 已经是命名空间格式
+        if (dimension.contains(":")) {
+            return dimension.toLowerCase();
+        }
+
+        // 短名映射
+        switch (dimension.toLowerCase()) {
+            case "overworld":
+            case "the_overworld":
+                return "minecraft:overworld";
+            case "the_nether":
+            case "nether":
+                return "minecraft:the_nether";
+            case "the_end":
+            case "end":
+                return "minecraft:the_end";
+            default:
+                return "minecraft:" + dimension.toLowerCase();
         }
     }
 }

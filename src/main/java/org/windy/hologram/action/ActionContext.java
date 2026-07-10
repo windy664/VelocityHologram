@@ -5,19 +5,36 @@ import com.velocitypowered.api.proxy.ProxyServer;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import org.windy.hologram.rcon.RconPool;
 
 import java.util.UUID;
 
 /**
  * 动作执行上下文。
- * <p>持有 ProxyServer 引用，供 Action 实现调用。
+ * <p>持有 ProxyServer 和 RconPool 引用，供 Action 实现调用。
  */
 public class ActionContext {
 
     private static ProxyServer proxy;
+    private static RconPool rconPool;
 
     public static void init(ProxyServer proxy) {
         ActionContext.proxy = proxy;
+    }
+
+    public static ProxyServer getProxy() {
+        return proxy;
+    }
+
+    public static void setRconPool(RconPool pool) {
+        ActionContext.rconPool = pool;
+    }
+
+    /**
+     * RCON 是否可用。
+     */
+    public static boolean rconAvailable() {
+        return rconPool != null;
     }
 
     /**
@@ -27,8 +44,6 @@ public class ActionContext {
         if (proxy == null) return;
         Player player = proxy.getPlayer(playerId).orElse(null);
         if (player != null) {
-            // Velocity 3.3.0+ 的 player.chat() 可能不存在
-            // 使用 player.spoofChatInput() 代替
             player.spoofChatInput("/" + command);
         }
     }
@@ -43,13 +58,26 @@ public class ActionContext {
 
     /**
      * 通过 RCON 执行命令。
-     * <p>需要目标服务器的 RCON 连接信息。
-     * TODO: 实现 RCON 客户端
+     *
+     * @param command      命令
+     * @param targetServer 目标子服，null 表示所有子服
      */
     public static void executeRcon(String command, String targetServer) {
-        // RCON 需要单独的 TCP 连接到服务器的 RCON 端口
-        // 这里先用控制台命令代替，后续实现真正的 RCON
-        executeConsole(command);
+        if (rconPool == null) {
+            // RCON 未配置，降级为控制台
+            executeConsole(command);
+            return;
+        }
+
+        if (targetServer != null && !targetServer.isEmpty()) {
+            String result = rconPool.execute(targetServer, command);
+            if (result == null) {
+                // RCON 失败，降级为控制台
+                executeConsole(command);
+            }
+        } else {
+            rconPool.executeAll(command);
+        }
     }
 
     /**

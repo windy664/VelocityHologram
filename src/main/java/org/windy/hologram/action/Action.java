@@ -35,6 +35,13 @@ public interface Action {
         URL,               // 打开 URL
         MESSAGE,           // 发送消息给玩家
         CLOSE,             // 关闭聊天栏
-        SUGGEST_COMMAND    // 建议命令（填入聊天框但不执行）
+        SUGGEST_COMMAND,   // 建议命令（填入聊天框但不执行）
+        CONNECT,           // 切换子服
+        SOUND,             // 播放音效
+        TELEPORT,          // 传送到坐标
+        NEXT_PAGE,         // 下一页
+        PREV_PAGE,         // 上一页
+        PAGE,              // 跳到指定页
+        PERMISSION         // 权限门控
     }
 }

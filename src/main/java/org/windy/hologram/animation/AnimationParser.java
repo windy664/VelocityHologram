@@ -19,10 +19,12 @@ public class AnimationParser {
     private AnimationParser() {}
 
     /**
-     * 检查文本是否包含动画。
+     * 检查文本是否包含动画或渐变。
      */
     public static boolean hasAnimation(String text) {
-        return text != null && text.contains("{cycle:") || text.contains("{random:") || text.contains("{typewriter:");
+        if (text == null) return false;
+        return text.contains("{cycle:") || text.contains("{random:")
+                || text.contains("{typewriter:") || GradientParser.hasGradient(text);
     }
 
     /**

@@ -4,12 +4,12 @@ import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityData;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes;
 import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
+import com.github.retrooper.packetevents.protocol.world.states.WrappedBlockState;
+import com.github.retrooper.packetevents.protocol.world.states.type.StateTypes;
 import com.github.retrooper.packetevents.util.Vector3d;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityMetadata;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnEntity;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,32 +17,20 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Text Display 实体工厂。
+ * Block Display 实体工厂。
  *
  * <p>元数据索引（1.19.4+）：
  * <ul>
- *   <li>8-10: translation (Vector3f)</li>
- *   <li>11-13: scale (Vector3f)</li>
- *   <li>22: Text (Component)</li>
- *   <li>23: LineWidth (Int)</li>
- *   <li>24: BackgroundColor (Int ARGB)</li>
- *   <li>25: TextOpacity (Byte)</li>
- *   <li>26: StyleFlags (Byte)</li>
- *   <li>27: Billboard (Byte) — 0=FIXED, 1=VERTICAL, 2=HORIZONTAL, 3=CENTER</li>
+ *   <li>11-13: scale</li>
+ *   <li>22: BlockState (VarInt)</li>
+ *   <li>27: Billboard (Byte)</li>
  * </ul>
  */
-public class TextDisplayFactory implements DisplayEntityFactory {
+public class BlockDisplayFactory implements DisplayEntityFactory {
 
-    // Display 基础
     private static final int INDEX_SCALE = 11;
     private static final int INDEX_BILLBOARD = 15;
-
-    // TextDisplay 专属（MC 26.1.2 验证通过）
-    private static final int INDEX_TEXT = 23;
-    private static final int INDEX_LINE_WIDTH = 24;
-    private static final int INDEX_BACKGROUND_COLOR = 25;
-    private static final int INDEX_TEXT_OPACITY = 26;
-    private static final int INDEX_STYLE_FLAGS = 27;
+    private static final int INDEX_BLOCK_STATE = 23;
 
     @Override
     public void spawn(Object player, int entityId, double x, double y, double z, DisplayConfig config) {
@@ -51,7 +39,7 @@ public class TextDisplayFactory implements DisplayEntityFactory {
         WrapperPlayServerSpawnEntity spawn = new WrapperPlayServerSpawnEntity(
                 entityId,
                 Optional.of(UUID.randomUUID()),
-                EntityTypes.TEXT_DISPLAY,
+                EntityTypes.BLOCK_DISPLAY,
                 new Vector3d(x, y, z),
                 0f, 0f, 0f,
                 0,
@@ -81,27 +69,10 @@ public class TextDisplayFactory implements DisplayEntityFactory {
     private WrapperPlayServerEntityMetadata createMetadata(int entityId, DisplayConfig config) {
         List<EntityData<?>> metadata = new ArrayList<>();
 
-        // 文本内容
-        Component component = LegacyComponentSerializer.legacySection().deserialize(
-                config.text() != null ? config.text() : "");
-        metadata.add(new EntityData<>(INDEX_TEXT, EntityDataTypes.ADV_COMPONENT, component));
-
-        // 行宽
-        metadata.add(new EntityData<>(INDEX_LINE_WIDTH, EntityDataTypes.INT, config.lineWidth()));
-
-        // 背景颜色
-        metadata.add(new EntityData<>(INDEX_BACKGROUND_COLOR, EntityDataTypes.INT, config.backgroundColor()));
-
-        // 文本透明度
-        metadata.add(new EntityData<>(INDEX_TEXT_OPACITY, EntityDataTypes.BYTE, config.textOpacity()));
-
-        // 样式标志
-        metadata.add(new EntityData<>(INDEX_STYLE_FLAGS, EntityDataTypes.BYTE, config.styleFlags()));
-
-        // Billboard 模式（3=CENTER，始终面向玩家）
+        int blockStateId = resolveBlockState(config.blockId());
+        metadata.add(new EntityData<>(INDEX_BLOCK_STATE, EntityDataTypes.INT, blockStateId));
         metadata.add(new EntityData<>(INDEX_BILLBOARD, EntityDataTypes.BYTE, (byte) config.billboard().id));
 
-        // 缩放
         if (config.scaleX() != 1f || config.scaleY() != 1f || config.scaleZ() != 1f) {
             metadata.add(new EntityData<>(INDEX_SCALE, EntityDataTypes.VECTOR3F,
                     new com.github.retrooper.packetevents.util.Vector3f(
@@ -109,5 +80,20 @@ public class TextDisplayFactory implements DisplayEntityFactory {
         }
 
         return new WrapperPlayServerEntityMetadata(entityId, metadata);
+    }
+
+    private int resolveBlockState(String blockId) {
+        if (blockId == null || blockId.isEmpty()) return 0;
+        String fullId = blockId.contains(":") ? blockId : "minecraft:" + blockId;
+        try {
+            var mapped = StateTypes.getRegistry().getByName(fullId);
+            if (mapped != null) {
+                var stateType = mapped.getStateType();
+                WrappedBlockState state = WrappedBlockState.getDefaultState(stateType);
+                return state.getGlobalId();
+            }
+        } catch (Exception ignored) {
+        }
+        return 0;
     }
 }

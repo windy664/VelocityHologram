@@ -3,144 +3,302 @@ package org.windy.hologram.hologram;
 import org.windy.hologram.action.Action;
 import org.windy.hologram.action.ClickHandler;
 import org.windy.hologram.animation.AnimationParser;
+import org.windy.hologram.animation.GradientParser;
 import org.windy.hologram.animation.TextAnimation;
 import org.windy.hologram.api.IHologram;
 import org.windy.hologram.api.IHologramLine;
-import org.windy.hologram.display.TextDisplayFactory;
+import org.windy.hologram.display.DisplayConfig;
+import org.windy.hologram.display.DisplayEntityFactory;
+import org.windy.hologram.display.DisplayEntityType;
+import org.windy.hologram.display.DisplayFactoryRegistry;
 import org.windy.hologram.placeholder.PlaceholderManager;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 /**
  * 悬浮字核心实现。
- * <p>管理一组 {@link HologramLine}，维护观察者列表，通过 packetevents 发包。
- * <p>支持动作、动画、占位符。
+ * <p>支持多页，每页一组行。玩家可独立翻页。
  */
 public class Hologram implements IHologram {
 
     private final UUID id;
     private final String name;
     private final HologramPos position;
-    private final List<HologramLine> lines = new ArrayList<>();
+    private final List<Page> pages = new ArrayList<>();
     private final Set<UUID> observers = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, Integer> playerPages = new ConcurrentHashMap<>();
 
     // 外部依赖
     private final ClickHandler clickHandler;
     private final PlaceholderManager placeholderManager;
+    private final DisplayFactoryRegistry displayRegistry;
+    private final Function<UUID, Object> playerResolver;
 
-    // 视距（默认 48 格）
-    private double viewDistance = 48.0;
+    // 配置
+    private double viewDistance = 48.0;      // 显示范围（进入此范围才显示）
+    private double updateDistance = 48.0;    // 更新范围（在此范围内才接收更新）
+    private double lineSpacing = 0.3;
+    private int updateInterval = 20;         // 更新间隔（tick，1秒=20tick）
+    private String permission;
+    private int editPageIndex = 0;
+    private java.util.Set<String> flags = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public Hologram(String name, HologramPos position, ClickHandler clickHandler,
-                    PlaceholderManager placeholderManager) {
+                    PlaceholderManager placeholderManager, DisplayFactoryRegistry displayRegistry,
+                    Function<UUID, Object> playerResolver) {
         this.id = UUID.randomUUID();
         this.name = name;
         this.position = position;
         this.clickHandler = clickHandler;
         this.placeholderManager = placeholderManager;
+        this.displayRegistry = displayRegistry;
+        this.playerResolver = playerResolver;
+        // 默认创建第一页
+        pages.add(new Page(0));
     }
 
     @Override public UUID getId() { return id; }
     @Override public String getName() { return name; }
     @Override public HologramPos getPosition() { return position; }
 
+    /**
+     * 更新悬浮字位置（用于 move 命令）。
+     */
+    public void setPosition(double x, double y, double z) {
+        // 由于 HologramPos 是 record（不可变），需要通过反射来更新
+        try {
+            var field = Hologram.class.getDeclaredField("position");
+            field.setAccessible(true);
+            field.set(this, new HologramPos(x, y, z, position.dimension(), position.server()));
+        } catch (Exception e) {
+            throw new RuntimeException("无法更新悬浮字位置", e);
+        }
+    }
+
     public double getViewDistance() { return viewDistance; }
     public void setViewDistance(double viewDistance) { this.viewDistance = viewDistance; }
 
-    @Override
-    public List<IHologramLine> getLines() {
-        return Collections.unmodifiableList(lines);
+    public double getUpdateDistance() { return updateDistance; }
+    public void setUpdateDistance(double updateDistance) { this.updateDistance = updateDistance; }
+
+    public double getLineSpacing() { return lineSpacing; }
+    public void setLineSpacing(double lineSpacing) { this.lineSpacing = lineSpacing; }
+
+    public int getUpdateInterval() { return updateInterval; }
+    public void setUpdateInterval(int updateInterval) { this.updateInterval = updateInterval; }
+
+    public String getPermission() { return permission; }
+    public void setPermission(String permission) { this.permission = permission; }
+
+    // ===== Flag 系统 =====
+
+    public java.util.Set<String> getFlags() { return flags; }
+    public void addFlag(String flag) { flags.add(flag.toLowerCase()); }
+    public void removeFlag(String flag) { flags.remove(flag.toLowerCase()); }
+    public boolean hasFlag(String flag) { return flags.contains(flag.toLowerCase()); }
+
+    // ===== 页管理 =====
+
+    public int getPageCount() { return pages.size(); }
+
+    public Page getPage(int index) {
+        if (index >= 0 && index < pages.size()) return pages.get(index);
+        return null;
+    }
+
+    public Page getCurrentEditPage() {
+        return getPage(editPageIndex);
+    }
+
+    public int getEditPageIndex() { return editPageIndex; }
+
+    public void setEditPageIndex(int index) {
+        if (index >= 0 && index < pages.size()) {
+            this.editPageIndex = index;
+        }
     }
 
     /**
-     * 获取指定索引的行。
+     * 添加新页。
      */
-    public HologramLine getLine(int index) {
-        if (index >= 0 && index < lines.size()) {
-            return lines.get(index);
+    public Page addPage() {
+        Page page = new Page(pages.size());
+        pages.add(page);
+        return page;
+    }
+
+    /**
+     * 删除指定页。
+     */
+    public boolean removePage(int index) {
+        if (index < 0 || index >= pages.size() || pages.size() <= 1) return false;
+        Page removed = pages.remove(index);
+        removed.unregisterClickActions(clickHandler);
+        // 重建索引
+        for (int i = 0; i < pages.size(); i++) {
+            // Page 的 pageIndex 是构造时固定的，这里不需要改
         }
-        return null;
+        // 调整编辑页码
+        if (editPageIndex >= pages.size()) editPageIndex = pages.size() - 1;
+        // 调整玩家页码
+        playerPages.replaceAll((pid, page) -> Math.min(page, pages.size() - 1));
+        return true;
+    }
+
+    /**
+     * 获取玩家当前页码。
+     */
+    public int getPlayerPage(UUID playerId) {
+        return playerPages.getOrDefault(playerId, 0);
+    }
+
+    /**
+     * 设置玩家页码。
+     */
+    public void setPlayerPage(UUID playerId, int pageIndex) {
+        if (pageIndex >= 0 && pageIndex < pages.size()) {
+            playerPages.put(playerId, pageIndex);
+        }
+    }
+
+    /**
+     * 玩家翻到下一页。
+     */
+    public boolean nextPage(UUID playerId) {
+        int current = getPlayerPage(playerId);
+        if (current < pages.size() - 1) {
+            switchPage(playerId, current + 1);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 玩家翻到上一页。
+     */
+    public boolean prevPage(UUID playerId) {
+        int current = getPlayerPage(playerId);
+        if (current > 0) {
+            switchPage(playerId, current - 1);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 切换玩家到指定页（despawn 旧页 → spawn 新页）。
+     */
+    public void switchPage(UUID playerId, int pageIndex) {
+        if (pageIndex < 0 || pageIndex >= pages.size()) return;
+        if (!observers.contains(playerId)) return;
+
+        int oldPage = getPlayerPage(playerId);
+        if (oldPage == pageIndex) return;
+
+        // despawn 旧页
+        Page old = getPage(oldPage);
+        if (old != null) old.hideFrom(playerId, displayRegistry, playerResolver);
+
+        // spawn 新页
+        playerPages.put(playerId, pageIndex);
+        Page page = pages.get(pageIndex);
+        if (page != null) {
+            page.showTo(playerId, position.x(), position.y(), position.z(),
+                    lineSpacing, displayRegistry, placeholderManager, playerResolver);
+        }
+    }
+
+    // ===== 兼容旧 API：操作当前编辑页 =====
+
+    @Override
+    public List<IHologramLine> getLines() {
+        Page page = getCurrentEditPage();
+        return page != null ? Collections.unmodifiableList(page.getLines()) : Collections.emptyList();
+    }
+
+    public HologramLine getLine(int index) {
+        Page page = getCurrentEditPage();
+        return page != null ? page.getLine(index) : null;
+    }
+
+    public int getLineCount() {
+        Page page = getCurrentEditPage();
+        return page != null ? page.getLineCount() : 0;
     }
 
     @Override
     public void addLine(String text) {
-        HologramLine line = new HologramLine(lines.size(), text);
+        Page page = getCurrentEditPage();
+        if (page != null) page.addLine(text);
+    }
 
-        // 检查是否有动画
-        if (AnimationParser.hasAnimation(text)) {
-            TextAnimation animation = AnimationParser.parse(text);
-            line.setAnimation(animation);
-        }
-
-        lines.add(line);
+    public void addLine(DisplayConfig config) {
+        Page page = getCurrentEditPage();
+        if (page != null) page.addLine(config);
     }
 
     @Override
     public void setLine(int index, String text) {
-        if (index >= 0 && index < lines.size()) {
-            HologramLine line = lines.get(index);
-            line.setText(text);
-
-            // 更新动画
-            if (AnimationParser.hasAnimation(text)) {
-                line.setAnimation(AnimationParser.parse(text));
-            } else {
-                line.setAnimation(null);
-            }
-        }
+        Page page = getCurrentEditPage();
+        if (page != null) page.setLine(index, text);
     }
 
     @Override
     public void removeLine(int index) {
-        if (index >= 0 && index < lines.size()) {
-            HologramLine removed = lines.remove(index);
-
-            // 注销点击动作
-            if (clickHandler != null) {
-                clickHandler.unregisterClickAction(removed.getEntityId());
-            }
-
-            // 先对所有观察者销毁该行
+        Page page = getCurrentEditPage();
+        if (page == null) return;
+        HologramLine removed = page.removeLine(index);
+        if (removed != null && clickHandler != null) {
+            clickHandler.unregisterClickAction(removed.getEntityId());
+            // 对所有观察者销毁该行
             for (UUID playerId : observers) {
-                TextDisplayFactory.despawn(playerId, removed.getEntityId());
-            }
-
-            // 重建索引
-            for (int i = 0; i < lines.size(); i++) {
-                lines.get(i).setIndex(i);
+                DisplayEntityFactory factory = displayRegistry.getOrNull(removed.getEntityType());
+                Object player = playerResolver.apply(playerId);
+                if (factory != null && player != null) {
+                    factory.despawn(player, removed.getEntityId());
+                }
             }
         }
     }
 
     /**
-     * 设置行的点击动作。
+     * 在指定位置插入行。
      */
-    public void setLineAction(int index, Action leftClick, Action rightClick) {
-        if (index >= 0 && index < lines.size()) {
-            HologramLine line = lines.get(index);
-            line.setLeftClickAction(leftClick);
-            line.setRightClickAction(rightClick);
-
-            // 注册到点击处理器
-            if (clickHandler != null) {
-                clickHandler.registerClickAction(line.getEntityId(), leftClick, rightClick);
-            }
-        }
+    public boolean insertLine(int index, String text) {
+        Page page = getCurrentEditPage();
+        return page != null && page.insertLine(index, text) != null;
     }
+
+    /**
+     * 交换两行。
+     */
+    public boolean swapLines(int a, int b) {
+        Page page = getCurrentEditPage();
+        return page != null && page.swapLines(a, b);
+    }
+
+    public void setLineAction(int index, Action leftClick, Action rightClick) {
+        Page page = getCurrentEditPage();
+        if (page != null) page.setLineAction(index, leftClick, rightClick, clickHandler);
+    }
+
+    // ===== 显示控制 =====
 
     @Override
     public void showTo(UUID playerId) {
         if (observers.add(playerId)) {
-            for (HologramLine line : lines) {
-                double y = line.getWorldY(position.y());
-                String text = resolveText(line, playerId);
-                TextDisplayFactory.spawn(playerId, line.getEntityId(),
-                        position.x(), y, position.z(), text);
+            int pageIndex = getPlayerPage(playerId);
+            Page page = getPage(pageIndex);
+            if (page != null) {
+                page.showTo(playerId, position.x(), position.y(), position.z(),
+                        lineSpacing, displayRegistry, placeholderManager, playerResolver);
             }
         }
     }
@@ -148,74 +306,75 @@ public class Hologram implements IHologram {
     @Override
     public void hideFrom(UUID playerId) {
         if (observers.remove(playerId)) {
-            for (HologramLine line : lines) {
-                TextDisplayFactory.despawn(playerId, line.getEntityId());
+            // despawn 所有页（防止翻页后残留）
+            for (Page page : pages) {
+                page.hideFrom(playerId, displayRegistry, playerResolver);
             }
+            playerPages.remove(playerId);
         }
     }
 
     @Override
     public void update() {
         for (UUID playerId : observers) {
-            for (HologramLine line : lines) {
-                String text = resolveText(line, playerId);
-                TextDisplayFactory.updateText(playerId, line.getEntityId(), text);
+            int pageIndex = getPlayerPage(playerId);
+            Page page = getPage(pageIndex);
+            if (page != null) {
+                page.update(playerId, position.x(), position.y(), position.z(),
+                        lineSpacing, displayRegistry, placeholderManager, playerResolver);
             }
         }
     }
 
-    /**
-     * 推进动画并更新显示。
-     *
-     * @return true 如果有帧变化
-     */
     public boolean tickAnimation() {
         boolean changed = false;
-        for (HologramLine line : lines) {
-            if (line.tickAnimation()) {
-                changed = true;
-            }
+        for (Page page : pages) {
+            if (page.tickAnimation()) changed = true;
         }
-
-        if (changed) {
-            update();
-        }
-
+        if (changed) update();
         return changed;
     }
 
     /**
-     * 替换占位符和动画。
+     * 刷新显示（despawn 全页再 spawn）。
+     * <p>用于 addline/removeLine 等结构性变更。
      */
-    private String resolveText(HologramLine line, UUID playerId) {
-        String text = line.getAnimationText();
-
-        // 替换占位符
-        if (placeholderManager != null) {
-            text = placeholderManager.replace(text, playerId);
+    public void refresh() {
+        for (UUID playerId : observers) {
+            int pageIndex = getPlayerPage(playerId);
+            Page page = getPage(pageIndex);
+            if (page != null) {
+                page.hideFrom(playerId, displayRegistry, playerResolver);
+                page.showTo(playerId, position.x(), position.y(), position.z(),
+                        lineSpacing, displayRegistry, placeholderManager, playerResolver);
+            }
         }
-
-        return text;
     }
 
     @Override
     public void destroy() {
         for (UUID playerId : observers) {
-            for (HologramLine line : lines) {
-                TextDisplayFactory.despawn(playerId, line.getEntityId());
+            for (Page page : pages) {
+                page.hideFrom(playerId, displayRegistry, playerResolver);
             }
         }
-
-        // 注销所有点击动作
-        if (clickHandler != null) {
-            for (HologramLine line : lines) {
-                clickHandler.unregisterClickAction(line.getEntityId());
-            }
+        for (Page page : pages) {
+            page.unregisterClickActions(clickHandler);
         }
-
         observers.clear();
+        playerPages.clear();
     }
 
     public Set<UUID> getObservers() { return observers; }
     public boolean isObserver(UUID playerId) { return observers.contains(playerId); }
+
+    /**
+     * 检查实体 ID 属于哪个页（用于点击处理）。
+     */
+    public int findPageByEntityId(int entityId) {
+        for (int i = 0; i < pages.size(); i++) {
+            if (pages.get(i).containsEntity(entityId)) return i;
+        }
+        return -1;
+    }
 }

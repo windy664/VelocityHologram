@@ -22,5 +22,8 @@ public interface IHologram {
     void update();
     void destroy();
 
+    /**
+     * 悬浮字位置。
+     */
     record HologramPos(double x, double y, double z, String dimension, String server) {}
 }

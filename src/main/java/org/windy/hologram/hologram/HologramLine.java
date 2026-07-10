@@ -3,12 +3,14 @@ package org.windy.hologram.hologram;
 import org.windy.hologram.action.Action;
 import org.windy.hologram.animation.TextAnimation;
 import org.windy.hologram.api.IHologramLine;
+import org.windy.hologram.display.DisplayConfig;
+import org.windy.hologram.display.DisplayEntityType;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 悬浮字单行文本实现。
- * <p>每行对应一个 Text Display 实体，拥有独立的实体 ID。
+ * 悬浮字单行实现。
+ * <p>每行对应一个 Display 实体（Text/Item/Block），拥有独立的实体 ID。
  * <p>支持动作（点击执行命令）和动画（文本循环）。
  */
 public class HologramLine implements IHologramLine {
@@ -18,12 +20,23 @@ public class HologramLine implements IHologramLine {
 
     private final int entityId;
     private int index;
-    private volatile String text;
-    private volatile String rawText; // 原始文本（含占位符和动画语法）
+
+    // 显示配置（统一持有，替代原来的 text 字段）
+    private volatile DisplayConfig displayConfig;
+
+    // 原始文本（含占位符和动画语法，用于 Text Display）
+    private volatile String rawText;
+
+    // 行偏移
+    private double offsetY;
+    private double offsetX;
+    private double offsetZ;
 
     // 动作
     private Action leftClickAction;
     private Action rightClickAction;
+    private Action shiftLeftClickAction;
+    private Action shiftRightClickAction;
 
     // 动画
     private TextAnimation animation;
@@ -31,8 +44,18 @@ public class HologramLine implements IHologramLine {
     public HologramLine(int index, String text) {
         this.entityId = ENTITY_ID_COUNTER.decrementAndGet();
         this.index = index;
-        this.text = text;
         this.rawText = text;
+        this.displayConfig = DisplayConfig.builder(DisplayEntityType.TEXT_DISPLAY).text(text).build();
+    }
+
+    /**
+     * 创建指定类型的行。
+     */
+    public HologramLine(int index, DisplayConfig config) {
+        this.entityId = ENTITY_ID_COUNTER.decrementAndGet();
+        this.index = index;
+        this.displayConfig = config;
+        this.rawText = config.text();
     }
 
     @Override
@@ -41,12 +64,24 @@ public class HologramLine implements IHologramLine {
     void setIndex(int index) { this.index = index; }
 
     @Override
-    public String getText() { return text; }
+    public String getText() {
+        return displayConfig.text() != null ? displayConfig.text() : "";
+    }
 
     @Override
     public void setText(String text) {
-        this.text = text;
         this.rawText = text;
+        this.displayConfig = DisplayConfig.builder(displayConfig.type())
+                .text(text)
+                .itemId(displayConfig.itemId())
+                .blockId(displayConfig.blockId())
+                .billboard(displayConfig.billboard())
+                .scale(displayConfig.scaleX(), displayConfig.scaleY(), displayConfig.scaleZ())
+                .backgroundColor(displayConfig.backgroundColor())
+                .textOpacity(displayConfig.textOpacity())
+                .styleFlags(displayConfig.styleFlags())
+                .lineWidth(displayConfig.lineWidth())
+                .build();
     }
 
     /**
@@ -55,14 +90,36 @@ public class HologramLine implements IHologramLine {
     public String getRawText() { return rawText; }
 
     /**
-     * 设置显示文本（已替换占位符和动画）。
+     * 获取实体类型。
      */
-    public void setDisplayText(String text) {
-        this.text = text;
+    public DisplayEntityType getEntityType() { return displayConfig.type(); }
+
+    /**
+     * 获取显示配置。
+     */
+    public DisplayConfig getDisplayConfig() { return displayConfig; }
+
+    /**
+     * 设置显示配置。
+     */
+    public void setDisplayConfig(DisplayConfig config) {
+        this.displayConfig = config;
+        if (config.text() != null) {
+            this.rawText = config.text();
+        }
     }
 
     @Override
     public int getEntityId() { return entityId; }
+
+    // ===== 行间距 =====
+
+    public double getOffsetY() { return offsetY; }
+    public void setOffsetY(double offsetY) { this.offsetY = offsetY; }
+    public double getOffsetX() { return offsetX; }
+    public void setOffsetX(double offsetX) { this.offsetX = offsetX; }
+    public double getOffsetZ() { return offsetZ; }
+    public void setOffsetZ(double offsetZ) { this.offsetZ = offsetZ; }
 
     // ===== 动作 =====
 
@@ -71,6 +128,12 @@ public class HologramLine implements IHologramLine {
 
     public Action getRightClickAction() { return rightClickAction; }
     public void setRightClickAction(Action action) { this.rightClickAction = action; }
+
+    public Action getShiftLeftClickAction() { return shiftLeftClickAction; }
+    public void setShiftLeftClickAction(Action action) { this.shiftLeftClickAction = action; }
+
+    public Action getShiftRightClickAction() { return shiftRightClickAction; }
+    public void setShiftRightClickAction(Action action) { this.shiftRightClickAction = action; }
 
     // ===== 动画 =====
 
@@ -97,8 +160,12 @@ public class HologramLine implements IHologramLine {
 
     /**
      * 计算该行在世界中的 Y 坐标。
+     *
+     * @param baseY        悬浮字基准 Y
+     * @param lineSpacing  默认行间距
      */
-    public double getWorldY(double baseY) {
-        return baseY - (index * 0.3);
+    public double getWorldY(double baseY, double lineSpacing) {
+        double spacing = (offsetY > 0) ? offsetY : lineSpacing;
+        return baseY - (index * spacing);
     }
 }

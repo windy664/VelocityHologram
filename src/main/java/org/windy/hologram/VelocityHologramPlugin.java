@@ -14,12 +14,18 @@ import com.velocitypowered.api.proxy.ProxyServer;
 import org.slf4j.Logger;
 import org.windy.hologram.action.ActionContext;
 import org.windy.hologram.action.ClickHandler;
+import org.windy.hologram.api.VelocityHologramAPI;
 import org.windy.hologram.command.HologramCommand;
 import org.windy.hologram.config.HologramLoader;
+import org.windy.hologram.config.Lang;
+import org.windy.hologram.config.PluginConfig;
+import org.windy.hologram.display.*;
+import org.windy.hologram.rcon.RconPool;
 import org.windy.hologram.hologram.Hologram;
 import org.windy.hologram.hologram.HologramManager;
 import org.windy.hologram.placeholder.PlaceholderManager;
 import org.windy.hologram.tracker.HologramPacketListener;
+import org.windy.hologram.tracker.PlayerState;
 import org.windy.hologram.tracker.PlayerTracker;
 
 import java.nio.file.Path;
@@ -31,10 +37,12 @@ import java.time.Duration;
  *
  * <p>特性：
  * <ul>
- *   <li>Text Display 实体（1.19.4+）</li>
+ *   <li>Text / Item / Block Display 实体（1.19.4+）</li>
  *   <li>点击动作（命令/URL/RCON）</li>
- *   <li>文本动画（循环/随机/打字机）</li>
+ *   <li>文本动画（循环/随机/打字机/渐变）</li>
  *   <li>占位符（在线人数/玩家名等）</li>
+ *   <li>视觉效果（Billboard/缩放/透明度/背景）</li>
+ *   <li>权限控制</li>
  *   <li>空间分区优化</li>
  *   <li>YAML 持久化</li>
  * </ul>
@@ -42,7 +50,7 @@ import java.time.Duration;
 @Plugin(
         id = "velocityhologram",
         name = "VelocityHologram",
-        version = "1.0.0",
+        version = "1.2.0",
         authors = {"风吟"}
 )
 public class VelocityHologramPlugin {
@@ -55,6 +63,10 @@ public class VelocityHologramPlugin {
     private HologramLoader hologramLoader;
     private ClickHandler clickHandler;
     private PlaceholderManager placeholderManager;
+    private DisplayFactoryRegistry displayRegistry;
+    private PluginConfig pluginConfig;
+    private RconPool rconPool;
+    private boolean peSelfInitialized = false;
 
     @Inject
     public VelocityHologramPlugin(ProxyServer proxy, Logger logger, @DataDirectory Path dataDir) {
@@ -65,24 +77,80 @@ public class VelocityHologramPlugin {
 
     @Subscribe
     public void onProxyInit(ProxyInitializeEvent event) {
+        // packetevents 智能初始化：已有则复用，没有则自己初始化
+        var peAPI = com.github.retrooper.packetevents.PacketEvents.getAPI();
+        if (peAPI == null) {
+            var pluginContainer = proxy.getPluginManager()
+                    .getPlugin("velocityhologram")
+                    .orElse(null);
+            if (pluginContainer != null) {
+                peAPI = io.github.retrooper.packetevents.velocity.factory.VelocityPacketEventsBuilder
+                        .build(proxy, pluginContainer, logger, dataDir);
+                com.github.retrooper.packetevents.PacketEvents.setAPI(peAPI);
+                peAPI.load();
+                peAPI.init();
+                peSelfInitialized = true;
+                logger.info("[VelocityHologram] PacketEvents 已自行初始化");
+            }
+        } else {
+            logger.info("[VelocityHologram] 复用已有的 PacketEvents 实例");
+        }
+
+        if (peAPI == null) {
+            logger.error("[VelocityHologram] PacketEvents 初始化失败，插件无法启用");
+            return;
+        }
+
         // 初始化动作上下文
         ActionContext.init(proxy);
+
+        // 加载主配置 + 语言
+        pluginConfig = new PluginConfig(dataDir);
+        pluginConfig.load();
+        Lang.load(dataDir);
+
+        // 初始化 RCON 连接池
+        var rconServers = pluginConfig.getRconServers();
+        if (!rconServers.isEmpty()) {
+            rconPool = new RconPool(rconServers);
+            ActionContext.setRconPool(rconPool);
+            logger.info("[VelocityHologram] RCON 已配置 " + rconServers.size() + " 个服务器");
+        }
+
+        // 初始化 Display 工厂注册表
+        displayRegistry = new DisplayFactoryRegistry();
+        displayRegistry.register(DisplayEntityType.TEXT_DISPLAY, new TextDisplayFactory());
+        displayRegistry.register(DisplayEntityType.ITEM_DISPLAY, new ItemDisplayFactory());
+        displayRegistry.register(DisplayEntityType.BLOCK_DISPLAY, new BlockDisplayFactory());
+        displayRegistry.register(DisplayEntityType.ENTITY, new EntityFactory());
+        displayRegistry.register(DisplayEntityType.HEAD, new HeadFactory(false));
+        displayRegistry.register(DisplayEntityType.SMALLHEAD, new HeadFactory(true));
 
         // 初始化核心组件
         playerTracker = new PlayerTracker();
         clickHandler = new ClickHandler();
         placeholderManager = new PlaceholderManager(proxy);
-        hologramManager = new HologramManager(playerTracker, clickHandler, placeholderManager);
-        hologramLoader = new HologramLoader(dataDir);
+        hologramManager = new HologramManager(playerTracker, clickHandler, placeholderManager, displayRegistry,
+                uuid -> proxy.getPlayer(uuid).orElse(null));
+        hologramManager.setLogger(logger);
+        VelocityHologramAPI.setManager(hologramManager);
+
+        // 设置权限检查器（使用 Velocity 的 Player.hasPermission）
+        hologramManager.setPermissionChecker((playerId, permission) -> {
+            Player player = proxy.getPlayer(playerId).orElse(null);
+            return player == null || player.hasPermission(permission);
+        });
+
+        hologramLoader = new HologramLoader(dataDir, displayRegistry);
 
         // 注册 packetevents 监听器
-        com.github.retrooper.packetevents.PacketEvents.getAPI().getEventManager()
+        peAPI.getEventManager()
                 .registerListener(new HologramPacketListener(playerTracker, hologramManager));
-        com.github.retrooper.packetevents.PacketEvents.getAPI().getEventManager()
+        peAPI.getEventManager()
                 .registerListener(clickHandler);
 
         // 注册命令
-        HologramCommand command = new HologramCommand(hologramManager, playerTracker, hologramLoader);
+        HologramCommand command = new HologramCommand(hologramManager, playerTracker, hologramLoader, clickHandler);
         proxy.getCommandManager().register(
                 proxy.getCommandManager().metaBuilder("holo").build(),
                 command
@@ -109,31 +177,55 @@ public class VelocityHologramPlugin {
         // 加载配置中的悬浮字
         hologramLoader.loadAll(hologramManager);
 
-        logger.info("[VelocityHologram] 已启用（packetevents 包级实体模拟）");
+        // 补注册插件启动前就已在线的玩家
+        for (Player online : proxy.getAllPlayers()) {
+            playerTracker.register(online.getUniqueId(), online.getUsername());
+            String server = online.getCurrentServer()
+                    .map(s -> s.getServerInfo().getName())
+                    .orElse("unknown");
+            PlayerState st = playerTracker.get(online.getUniqueId());
+            if (st != null) st.setServer(server);
+        }
+
+        logger.info("[VelocityHologram] 已启用 v1.2.0（多页/动作扩展/命令补全）");
         logger.info("[VelocityHologram] 已加载 " + hologramManager.getAllHolograms().size() + " 个悬浮字");
+        logger.info("[VelocityHologram] 已注册 " + playerTracker.getAllStates().size() + " 个在线玩家");
+
+        // 延迟触发一次可见性，让已在线玩家看到已有悬浮字
+        proxy.getScheduler().buildTask(this, () -> {
+            hologramManager.tickVisibility();
+        }).delay(Duration.ofSeconds(2)).schedule();
     }
 
     @Subscribe
     public void onProxyShutdown(ProxyShutdownEvent event) {
-        // 保存所有悬浮字配置
-        for (Hologram hologram : hologramManager.getAllHolograms()) {
-            hologramLoader.save(hologram);
-            hologram.destroy();
+        if (hologramManager != null && hologramLoader != null) {
+            for (Hologram hologram : hologramManager.getAllHolograms()) {
+                hologramLoader.save(hologram);
+                hologram.destroy();
+            }
+        }
+        if (rconPool != null) {
+            rconPool.closeAll();
+        }
+        // 只有自己初始化的才 terminate，不破坏别人的实例
+        if (peSelfInitialized) {
+            com.github.retrooper.packetevents.PacketEvents.getAPI().terminate();
         }
         logger.info("[VelocityHologram] 已关闭");
     }
 
     @Subscribe
     public void onPlayerLogin(PostLoginEvent event) {
+        if (playerTracker == null) return;
         Player player = event.getPlayer();
-        // 注册玩家到追踪器
         playerTracker.register(player.getUniqueId(), player.getUsername());
     }
 
     @Subscribe
     public void onPlayerJoin(ServerPostConnectEvent event) {
+        if (playerTracker == null || hologramManager == null) return;
         Player player = event.getPlayer();
-        // 更新玩家服务器
         String server = player.getCurrentServer()
                 .map(s -> s.getServerInfo().getName())
                 .orElse("unknown");
@@ -151,6 +243,7 @@ public class VelocityHologramPlugin {
 
     @Subscribe
     public void onPlayerDisconnect(DisconnectEvent event) {
+        if (playerTracker == null || hologramManager == null) return;
         Player player = event.getPlayer();
         playerTracker.remove(player.getUniqueId());
         hologramManager.onPlayerDisconnect(player.getUniqueId());

@@ -2,19 +2,27 @@ package org.windy.hologram.hologram;
 
 import org.windy.hologram.action.ClickHandler;
 import org.windy.hologram.api.IHologram;
+import org.windy.hologram.api.event.EventBus;
+import org.windy.hologram.api.event.HologramCreateEvent;
+import org.windy.hologram.api.event.HologramDeleteEvent;
+import org.windy.hologram.display.DisplayFactoryRegistry;
 import org.windy.hologram.placeholder.PlaceholderManager;
 import org.windy.hologram.tracker.PlayerState;
 import org.windy.hologram.tracker.PlayerTracker;
+
+import org.slf4j.Logger;
 
 import java.util.Collection;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * 悬浮字管理器。
  * <p>管理所有悬浮字的生命周期，协调 PlayerTracker 进行可见性计算。
- * <p>支持动画更新和空间分区优化。
+ * <p>支持动画更新、空间分区优化和权限控制。
  */
 public class HologramManager {
 
@@ -23,16 +31,41 @@ public class HologramManager {
     private final PlayerTracker playerTracker;
     private final ClickHandler clickHandler;
     private final PlaceholderManager placeholderManager;
+    private final DisplayFactoryRegistry displayRegistry;
+    private final Function<UUID, Object> playerResolver;
+    private Logger logger;
+
+    // 权限检查器（由插件注入）
+    private PermissionChecker permissionChecker;
 
     // 动画更新计数器
     private int animationTickCounter = 0;
-    private static final int ANIMATION_UPDATE_INTERVAL = 2; // 每 2 tick 更新一次动画
+    private static final int ANIMATION_UPDATE_INTERVAL = 2;
+
+    /**
+     * 权限检查接口。
+     */
+    @FunctionalInterface
+    public interface PermissionChecker {
+        boolean hasPermission(UUID playerId, String permission);
+    }
 
     public HologramManager(PlayerTracker playerTracker, ClickHandler clickHandler,
-                           PlaceholderManager placeholderManager) {
+                           PlaceholderManager placeholderManager, DisplayFactoryRegistry displayRegistry,
+                           Function<UUID, Object> playerResolver) {
         this.playerTracker = playerTracker;
         this.clickHandler = clickHandler;
         this.placeholderManager = placeholderManager;
+        this.displayRegistry = displayRegistry;
+        this.playerResolver = playerResolver;
+    }
+
+    public void setPermissionChecker(PermissionChecker checker) {
+        this.permissionChecker = checker;
+    }
+
+    public void setLogger(Logger logger) {
+        this.logger = logger;
     }
 
     /**
@@ -42,13 +75,14 @@ public class HologramManager {
                                     String dimension, String server) {
         Hologram hologram = new Hologram(name,
                 new IHologram.HologramPos(x, y, z, dimension, server),
-                clickHandler, placeholderManager);
+                clickHandler, placeholderManager, displayRegistry, playerResolver);
         holograms.put(name, hologram);
 
         // 按服务器分组
         byServer.computeIfAbsent(server, k -> new ConcurrentHashMap<>())
                 .put(name, hologram);
 
+        EventBus.getInstance().fire(new HologramCreateEvent(hologram));
         return hologram;
     }
 
@@ -80,8 +114,8 @@ public class HologramManager {
     public void removeHologram(String name) {
         Hologram hologram = holograms.remove(name);
         if (hologram != null) {
+            EventBus.getInstance().fire(new HologramDeleteEvent(hologram));
             hologram.destroy();
-            // 从服务器分组中移除
             Map<String, Hologram> serverHolograms = byServer.get(hologram.getPosition().server());
             if (serverHolograms != null) {
                 serverHolograms.remove(name);
@@ -91,28 +125,28 @@ public class HologramManager {
 
     /**
      * 定时调用：更新所有悬浮字的可见性。
-     * <p>优化：只计算同一服务器内的悬浮字。
      */
     public void tickVisibility() {
         for (Map.Entry<UUID, PlayerState> entry : playerTracker.getAllStates().entrySet()) {
             UUID playerId = entry.getKey();
             PlayerState state = entry.getValue();
+            String playerServer = state.getServer();
 
-            // 获取玩家当前服务器的悬浮字
-            Map<String, Hologram> serverHolograms = byServer.get(state.getServer());
-            if (serverHolograms == null) {
-                // 该服务器没有悬浮字，隐藏所有
-                for (Hologram hologram : holograms.values()) {
-                    hologram.hideFrom(playerId);
-                }
-                continue;
-            }
-
-            // 计算该服务器内的悬浮字可见性
-            for (Hologram hologram : serverHolograms.values()) {
+            // 遍历所有悬浮字，判断可见性
+            for (Hologram hologram : holograms.values()) {
                 IHologram.HologramPos pos = hologram.getPosition();
+                String holoServer = pos.server();
 
-                // 检查维度
+                // 服务器检查：空 server = 所有服务器可见
+                boolean serverMatch = holoServer.isEmpty() || holoServer.equals(playerServer);
+                if (!serverMatch) {
+                    if (hologram.isObserver(playerId)) {
+                        hologram.hideFrom(playerId);
+                    }
+                    continue;
+                }
+
+                // 维度检查
                 if (!pos.dimension().equals(state.getDimension())) {
                     if (hologram.isObserver(playerId)) {
                         hologram.hideFrom(playerId);
@@ -120,29 +154,38 @@ public class HologramManager {
                     continue;
                 }
 
-                // 计算距离
+                // 权限检查
+                if (!checkVisibilityPermission(playerId, hologram)) {
+                    if (hologram.isObserver(playerId)) {
+                        hologram.hideFrom(playerId);
+                    }
+                    continue;
+                }
+
+                // ALWAYS_VISIBLE flag 跳过距离检查
+                if (hologram.hasFlag("always_visible")) {
+                    if (!hologram.isObserver(playerId)) {
+                        hologram.showTo(playerId);
+                    }
+                    continue;
+                }
+
+                // 距离检查
                 double dx = pos.x() - state.getX();
                 double dy = pos.y() - state.getY();
                 double dz = pos.z() - state.getZ();
                 double distanceSq = dx * dx + dy * dy + dz * dz;
 
-                // 视距检查
-                double viewDistSq = hologram.getViewDistance() * hologram.getViewDistance();
-                if (distanceSq <= viewDistSq) {
+                double displayDistSq = hologram.getViewDistance() * hologram.getViewDistance();
+                if (distanceSq <= displayDistSq) {
                     if (!hologram.isObserver(playerId)) {
                         hologram.showTo(playerId);
+                        if (logger != null) {
+                            logger.info("[VH] showTo {} → {} (dist={})", state.getName(), hologram.getName(),
+                                    String.format("%.1f", Math.sqrt(distanceSq)));
+                        }
                     }
                 } else {
-                    if (hologram.isObserver(playerId)) {
-                        hologram.hideFrom(playerId);
-                    }
-                }
-            }
-
-            // 隐藏其他服务器的悬浮字
-            for (Map.Entry<String, Map<String, Hologram>> serverEntry : byServer.entrySet()) {
-                if (serverEntry.getKey().equals(state.getServer())) continue;
-                for (Hologram hologram : serverEntry.getValue().values()) {
                     if (hologram.isObserver(playerId)) {
                         hologram.hideFrom(playerId);
                     }
@@ -152,8 +195,17 @@ public class HologramManager {
     }
 
     /**
+     * 检查玩家是否有查看悬浮字的权限。
+     */
+    private boolean checkVisibilityPermission(UUID playerId, Hologram hologram) {
+        String perm = hologram.getPermission();
+        if (perm == null || perm.isEmpty()) return true;
+        if (permissionChecker == null) return true;
+        return permissionChecker.hasPermission(playerId, perm);
+    }
+
+    /**
      * 定时调用：更新动画。
-     * <p>比可见性更新更频繁（每 2 tick）。
      */
     public void tickAnimation() {
         animationTickCounter++;
@@ -182,5 +234,12 @@ public class HologramManager {
         for (Hologram hologram : holograms.values()) {
             hologram.hideFrom(playerId);
         }
+    }
+
+    /**
+     * 获取 Display 工厂注册表。
+     */
+    public DisplayFactoryRegistry getDisplayRegistry() {
+        return displayRegistry;
     }
 }
