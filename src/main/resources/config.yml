@@ -1,0 +1,143 @@
+#  _____                            _   _   _                           _
+# |  __ \                          | | | | | |                         | |
+# | |  \/ __ _ _ ____   _____ _ __| | | |_| | __ _  _____   ____ _  __| | ___  _ __
+# | | __ / _` | '__\ \ / / _ \ '__| | |  _  |/ _` |/ _ \ \ / / _` |/ _` |/ _ \| '__|
+# | |_\ \ (_| | |   \ V /  __/ |  | | | | | | (_| |  __/\ V / (_| | (_| | (_) | |
+#  \____/\__,_|_|    \_/ \___|_|  |_| \_| |_/\__,_|\___| \_/ \__,_|\__,_|\___/|_|
+#
+# VelocityHologram Configuration
+# https://github.com/windy664/VelocityHologram
+#
+
+# =========================================
+# Update Checker
+# =========================================
+# Check for updates on plugin startup.
+update-checker: true
+
+# =========================================
+# RCON Servers
+# =========================================
+# Configure RCON servers for rcon: actions and /holo tp command.
+# Format:
+#   server-name:
+#     host: 127.0.0.1
+#     port: 25575
+#     password: "password"
+rcon:
+#  lobby:
+#    host: 127.0.0.1
+#    port: 25575
+#    password: ""
+#  survival:
+#    host: 127.0.0.1
+#    port: 25576
+#    password: ""
+
+# =========================================
+# Defaults
+# =========================================
+# Default values for new holograms.
+defaults:
+  # Default text for empty lines.
+  text: ""
+
+  # Whether lines should grow downward by default.
+  # false = lines grow upward (default)
+  # true = lines grow downward
+  down-origin: false
+
+  # Default heights for different line types.
+  height:
+    text: 0.3
+    icon: 0.6
+    head: 0.75
+    smallhead: 0.6
+
+  # Default display range (blocks).
+  # Players must be within this range to see the hologram.
+  display-range: 48
+
+  # Default update range (blocks).
+  # Players must be within this range to receive updates.
+  update-range: 48
+
+  # Default update interval (ticks, 1 second = 20 ticks).
+  update-interval: 20
+
+  # Click cooldown in seconds (prevents spam clicking).
+  click-cooldown: 1
+
+  # LRU cache size for placeholder resolution.
+  lru-cache-size: 500
+
+  # Whether holograms should appear at the player's eye level.
+  # false = feet level (default)
+  # true = eye level
+  eye-level-positioning: false
+
+  # Whether Display entities should appear at the player's eye level.
+  displays-eye-level-positioning: false
+
+  # Default background color (ARGB format).
+  # 0x40000000 = semi-transparent black
+  background-color: 0x40000000
+
+  # Default line spacing.
+  line-spacing: 0.3
+
+# =========================================
+# Animation Settings
+# =========================================
+# Allow placeholders inside animations.
+# This may cause performance issues with complex animations.
+allow-placeholders-inside-animations: false
+
+# =========================================
+# Visibility Settings
+# =========================================
+# Update visibility when a player teleports or respawns.
+# This may cause visual glitches on some client versions.
+# Enable only if holograms don't show after teleporting.
+update-visibility-on-teleport: false
+
+# =========================================
+# Custom Replacements
+# =========================================
+# Custom text replacements that can be used in hologram lines.
+# Use [key] syntax in your hologram text to replace with the value.
+custom-replacements:
+  "[x]": "█"
+  "[X]": "█"
+  "[/]": "▌"
+  "[,]": "░"
+  "[,,]": "▒"
+  "[,,,]": "▓"
+  "[p]": "•"
+  "[P]": "•"
+  "[|]": "⎟"
+
+# =========================================
+# Skin Settings
+# =========================================
+# Timeout for player skin connections (seconds).
+player-skin-connection-timeout: 5
+
+# =========================================
+# Damage Display
+# =========================================
+# Show damage numbers when entities take damage.
+damage-display:
+  enabled: false
+  duration: 40  # ticks (2 seconds)
+  appearance: "§c-{damage}❤"
+  critical-appearance: "§4§l暴击！ §c-{damage}❤"
+
+# =========================================
+# Healing Display
+# =========================================
+# Show healing numbers when entities are healed.
+healing-display:
+  enabled: false
+  duration: 40  # ticks (2 seconds)
+  appearance: "§a+{healing}❤"
