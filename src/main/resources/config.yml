@@ -1,29 +1,24 @@
-#  _____                            _   _   _                           _
-# |  __ \                          | | | | | |                         | |
-# | |  \/ __ _ _ ____   _____ _ __| | | |_| | __ _  _____   ____ _  __| | ___  _ __
-# | | __ / _` | '__\ \ / / _ \ '__| | |  _  |/ _` |/ _ \ \ / / _` |/ _` |/ _ \| '__|
-# | |_\ \ (_| | |   \ V /  __/ |  | | | | | | (_| |  __/\ V / (_| | (_| | (_) | |
-#  \____/\__,_|_|    \_/ \___|_|  |_| \_| |_/\__,_|\___| \_/ \__,_|\__,_|\___/|_|
-#
-# VelocityHologram Configuration
+# ============================================================
+# VelocityHologram 配置文件
+# 纯代理端悬浮字系统，基于 Velocity + packetevents 实现
 # https://github.com/windy664/VelocityHologram
-#
+# ============================================================
 
 # =========================================
-# Update Checker
+# 更新检查器
 # =========================================
-# Check for updates on plugin startup.
+# 启动时检查是否有新版本可用
 update-checker: true
 
 # =========================================
-# RCON Servers
+# RCON 服务器配置
 # =========================================
-# Configure RCON servers for rcon: actions and /holo tp command.
-# Format:
-#   server-name:
-#     host: 127.0.0.1
-#     port: 25575
-#     password: "password"
+# 用于 rcon: 动作和 /holo tp 命令
+# 格式：
+#   服务器名称:
+#     host: IP地址
+#     port: 端口号
+#     password: "密码"
 rcon:
 #  lobby:
 #    host: 127.0.0.1
@@ -35,109 +30,120 @@ rcon:
 #    password: ""
 
 # =========================================
-# Defaults
+# 默认设置
 # =========================================
-# Default values for new holograms.
 defaults:
-  # Default text for empty lines.
+  # 空行显示的默认文本
   text: ""
 
-  # Whether lines should grow downward by default.
-  # false = lines grow upward (default)
-  # true = lines grow downward
+  # 向下生长原点（行从下往上排列）
+  # false = 行从上往下排列（默认）
+  # true = 行从下往上排列
   down-origin: false
 
-  # Default heights for different line types.
+  # 各类型行的默认高度
   height:
-    text: 0.3
-    icon: 0.6
-    head: 0.75
-    smallhead: 0.6
+    text: 0.3        # 文本行高度
+    icon: 0.6        # 图标行高度
+    head: 0.75       # 头颅行高度
+    smallhead: 0.6   # 小头颅行高度
 
-  # Default display range (blocks).
-  # Players must be within this range to see the hologram.
+  # 显示范围（方块）
+  # 玩家进入此范围才显示悬浮字
   display-range: 48
 
-  # Default update range (blocks).
-  # Players must be within this range to receive updates.
+  # 更新范围（方块）
+  # 玩家在此范围内才接收悬浮字更新
   update-range: 48
 
-  # Default update interval (ticks, 1 second = 20 ticks).
+  # 更新间隔（tick，1秒 = 20 tick）
   update-interval: 20
 
-  # Click cooldown in seconds (prevents spam clicking).
+  # 点击冷却（秒）
+  # 防止玩家疯狂点击悬浮字
   click-cooldown: 1
 
-  # LRU cache size for placeholder resolution.
+  # LRU 缓存大小
+  # 用于占位符解析结果缓存
   lru-cache-size: 500
 
-  # Whether holograms should appear at the player's eye level.
-  # false = feet level (default)
-  # true = eye level
+  # 眼级定位
+  # 悬浮字在玩家眼高还是脚高显示
+  # false = 脚高（默认）
+  # true = 眼高
   eye-level-positioning: false
 
-  # Whether Display entities should appear at the player's eye level.
+  # Display 实体眼级定位
   displays-eye-level-positioning: false
 
-  # Default background color (ARGB format).
-  # 0x40000000 = semi-transparent black
+  # 默认背景颜色（ARGB 格式）
+  # 0x40000000 = 半透明黑色
   background-color: 0x40000000
 
-  # Default line spacing.
+  # 默认行间距
   line-spacing: 0.3
 
 # =========================================
-# Animation Settings
+# 动画设置
 # =========================================
-# Allow placeholders inside animations.
-# This may cause performance issues with complex animations.
+# 是否允许在动画中使用占位符
+# 开启可能导致复杂动画的性能问题
 allow-placeholders-inside-animations: false
 
 # =========================================
-# Visibility Settings
+# 可见性设置
 # =========================================
-# Update visibility when a player teleports or respawns.
-# This may cause visual glitches on some client versions.
-# Enable only if holograms don't show after teleporting.
+# 玩家传送或重生时是否更新可见性
+# 某些客户端版本可能导致视觉闪烁
+# 仅在悬浮字传送后不显示时开启
 update-visibility-on-teleport: false
 
 # =========================================
-# Custom Replacements
+# 自定义替换字符
 # =========================================
-# Custom text replacements that can be used in hologram lines.
-# Use [key] syntax in your hologram text to replace with the value.
+# 在悬浮字文本中使用 [key] 语法会被替换为对应的值
+# 可用于制作进度条、特殊符号等
 custom-replacements:
-  "[x]": "█"
-  "[X]": "█"
-  "[/]": "▌"
-  "[,]": "░"
-  "[,,]": "▒"
-  "[,,,]": "▓"
-  "[p]": "•"
-  "[P]": "•"
-  "[|]": "⎟"
+  "[x]": "█"       # 实心方块
+  "[X]": "█"       # 实心方块
+  "[/]": "▌"       # 左半方块
+  "[,]": "░"       # 浅色阴影
+  "[,,]": "▒"      # 中等阴影
+  "[,,,]": "▓"     # 深色阴影
+  "[p]": "•"       # 圆点
+  "[P]": "•"       # 圆点
+  "[|]": "⎟"       # 竖线
 
 # =========================================
-# Skin Settings
+# 皮肤设置
 # =========================================
-# Timeout for player skin connections (seconds).
+# 玩家皮肤连接超时时间（秒）
 player-skin-connection-timeout: 5
 
 # =========================================
-# Damage Display
+# 伤害显示
 # =========================================
-# Show damage numbers when entities take damage.
+# 实体受伤时显示伤害数字悬浮字
 damage-display:
+  # 是否启用
   enabled: false
-  duration: 40  # ticks (2 seconds)
+  # 悬浮字存活时间（tick，1秒 = 20 tick）
+  duration: 40
+  # 普通伤害显示样式
+  # {damage} 会被替换为伤害值
   appearance: "§c-{damage}❤"
+  # 暴击伤害显示样式
   critical-appearance: "§4§l暴击！ §c-{damage}❤"
 
 # =========================================
-# Healing Display
+# 治疗显示
 # =========================================
-# Show healing numbers when entities are healed.
+# 实体被治疗时显示治疗数字悬浮字
 healing-display:
+  # 是否启用
   enabled: false
-  duration: 40  # ticks (2 seconds)
+  # 悬浮字存活时间（tick，1秒 = 20 tick）
+  duration: 40
+  # 治疗显示样式
+  # {healing} 会被替换为治疗值
   appearance: "§a+{healing}❤"
