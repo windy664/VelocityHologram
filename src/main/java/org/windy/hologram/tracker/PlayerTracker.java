@@ -17,21 +17,32 @@ public class PlayerTracker {
      * 注册玩家（进服时调用）。
      */
     public void register(UUID playerId, String name) {
+        if (playerId == null || name == null) return;
+
+        PlayerState state = states.computeIfAbsent(playerId, key -> new PlayerState());
+        String previousName = state.getName();
+
+        if (previousName != null && !previousName.isBlank()
+                && !previousName.equalsIgnoreCase(name)) {
+            nameToUuid.remove(previousName.toLowerCase(), playerId);
+        }
+
+        state.setName(name);
         nameToUuid.put(name.toLowerCase(), playerId);
-        states.computeIfAbsent(playerId, k -> new PlayerState());
     }
 
     /**
      * 获取或创建玩家状态。
      */
     public PlayerState getOrCreate(UUID playerId) {
-        return states.computeIfAbsent(playerId, k -> new PlayerState());
+        return states.computeIfAbsent(playerId, key -> new PlayerState());
     }
 
     /**
      * 通过名字获取 UUID。
      */
     public UUID findUuid(String name) {
+        if (name == null) return null;
         return nameToUuid.get(name.toLowerCase());
     }
 
@@ -54,8 +65,11 @@ public class PlayerTracker {
      */
     public void remove(UUID playerId) {
         PlayerState state = states.remove(playerId);
-        if (state != null) {
-            nameToUuid.remove(state.getName().toLowerCase());
+        if (state == null) return;
+
+        String name = state.getName();
+        if (name != null && !name.isBlank()) {
+            nameToUuid.remove(name.toLowerCase(), playerId);
         }
     }
 }

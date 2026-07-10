@@ -6,7 +6,6 @@ import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.protocol.packettype.PacketTypeCommon;
 import com.github.retrooper.packetevents.protocol.player.User;
-import org.windy.hologram.hologram.Hologram;
 import org.windy.hologram.hologram.HologramManager;
 
 import java.util.Map;
@@ -16,24 +15,19 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 点击处理器。
  * <p>拦截 INTERACT_ENTITY 包，检测玩家点击悬浮字实体并执行对应动作。
- * <p>支持 4 种点击类型：LEFT, RIGHT, SHIFT_LEFT, SHIFT_RIGHT。
+ * <p>支持 4 种点击类型：LEFT、RIGHT、SHIFT_LEFT、SHIFT_RIGHT。
  */
 public class ClickHandler extends PacketListenerAbstract {
 
-    // entityId → 动作链（4 种点击类型）
     private final Map<Integer, ActionChain> leftClickActions = new ConcurrentHashMap<>();
     private final Map<Integer, ActionChain> rightClickActions = new ConcurrentHashMap<>();
     private final Map<Integer, ActionChain> shiftLeftClickActions = new ConcurrentHashMap<>();
     private final Map<Integer, ActionChain> shiftRightClickActions = new ConcurrentHashMap<>();
 
-    // 玩家潜行状态追踪
     private final Map<UUID, Boolean> sneaking = new ConcurrentHashMap<>();
-
-    // 点击冷却
     private final Map<UUID, Long> lastClickTime = new ConcurrentHashMap<>();
-    private long clickCooldownMs = 1000; // 默认 1 秒
 
-    // Hologram 引用（用于 page 动作）
+    private long clickCooldownMs = 1000;
     private HologramManager hologramManager;
 
     public ClickHandler() {
@@ -44,7 +38,7 @@ public class ClickHandler extends PacketListenerAbstract {
      * 设置点击冷却时间（秒）。
      */
     public void setClickCooldown(double seconds) {
-        this.clickCooldownMs = (long) (seconds * 1000);
+        this.clickCooldownMs = Math.max(0, (long) (seconds * 1000));
     }
 
     public void setHologramManager(HologramManager manager) {
@@ -55,25 +49,24 @@ public class ClickHandler extends PacketListenerAbstract {
      * 注册实体的点击动作链。
      */
     public void registerClickAction(int entityId, ActionChain left, ActionChain right,
-                                     ActionChain shiftLeft, ActionChain shiftRight) {
-        if (left != null) leftClickActions.put(entityId, left);
-        else leftClickActions.remove(entityId);
-        if (right != null) rightClickActions.put(entityId, right);
-        else rightClickActions.remove(entityId);
-        if (shiftLeft != null) shiftLeftClickActions.put(entityId, shiftLeft);
-        else shiftLeftClickActions.remove(entityId);
-        if (shiftRight != null) shiftRightClickActions.put(entityId, shiftRight);
-        else shiftRightClickActions.remove(entityId);
+                                    ActionChain shiftLeft, ActionChain shiftRight) {
+        putOrRemove(leftClickActions, entityId, left);
+        putOrRemove(rightClickActions, entityId, right);
+        putOrRemove(shiftLeftClickActions, entityId, shiftLeft);
+        putOrRemove(shiftRightClickActions, entityId, shiftRight);
     }
 
     /**
      * 注册单个点击动作（兼容旧 API）。
      */
     public void registerClickAction(int entityId, Action left, Action right) {
-        if (left != null) leftClickActions.put(entityId, new ActionChain(java.util.Collections.singletonList(left)));
-        else leftClickActions.remove(entityId);
-        if (right != null) rightClickActions.put(entityId, new ActionChain(java.util.Collections.singletonList(right)));
-        else rightClickActions.remove(entityId);
+        registerClickAction(
+                entityId,
+                toChain(left),
+                toChain(right),
+                null,
+                null
+        );
     }
 
     /**
@@ -92,74 +85,61 @@ public class ClickHandler extends PacketListenerAbstract {
 
         if (type == PacketType.Play.Client.INTERACT_ENTITY) {
             handleInteractEntity(event);
-        }
-        // 追踪潜行状态
-        else if (type == PacketType.Play.Client.ENTITY_ACTION) {
+        } else if (type == PacketType.Play.Client.ENTITY_ACTION) {
             handleEntityAction(event);
         }
     }
 
-    /**
-     * 处理 INTERACT_ENTITY 包。
-     * <p>包格式：EntityID(VarInt) + Type(VarInt) + 可选字段
-     * <p>Type: 0=interact(右键), 1=attack(左键), 2=interact_at
-     */
     private void handleInteractEntity(PacketReceiveEvent event) {
         try {
-            Object buf = event.getByteBuf();
-            com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.markReaderIndex(buf);
+            Object buffer = event.getByteBuf();
+            com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.markReaderIndex(buffer);
 
-            int entityId = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readVarInt(buf);
-            int type = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readVarInt(buf);
+            int entityId = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readVarInt(buffer);
+            int interactionType = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readVarInt(buffer);
 
-            com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.resetReaderIndex(buf);
+            com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.resetReaderIndex(buffer);
 
             User user = event.getUser();
             UUID playerId = user.getUUID();
             if (playerId == null) return;
 
-            boolean isSneaking = sneaking.getOrDefault(playerId, false);
+            String clickType = resolveClickType(
+                    interactionType,
+                    sneaking.getOrDefault(playerId, false)
+            );
+            if (clickType == null) return;
 
-            // 检查冷却时间
-            long now = System.currentTimeMillis();
-            Long lastClick = lastClickTime.get(playerId);
-            if (lastClick != null && (now - lastClick) < clickCooldownMs) {
+            ActionChain registeredAction = getRegisteredAction(entityId, clickType);
+            boolean hologramEntity = registeredAction != null || isHologramEntity(entityId);
+            if (!hologramEntity) return;
+
+            if (isCoolingDown(playerId)) return;
+            lastClickTime.put(playerId, System.currentTimeMillis());
+
+            if (registeredAction != null) {
+                registeredAction.execute(playerId);
                 return;
             }
-            lastClickTime.put(playerId, now);
 
-            ActionChain action = null;
-            if (type == 0) {
-                // 右键
-                action = isSneaking ? shiftRightClickActions.get(entityId) : rightClickActions.get(entityId);
-            } else if (type == 1) {
-                // 左键
-                action = isSneaking ? shiftLeftClickActions.get(entityId) : leftClickActions.get(entityId);
-            }
-
-            if (action != null) {
-                action.execute(playerId);
+            if (hologramManager != null) {
+                hologramManager.onClick(playerId, entityId, clickType);
             }
         } catch (Exception ignored) {
         }
     }
 
-    /**
-     * 处理 ENTITY_ACTION 包，追踪潜行状态。
-     * <p>ActionType: 1=START_SNEAKING, 2=STOP_SNEAKING
-     */
     private void handleEntityAction(PacketReceiveEvent event) {
         try {
-            Object buf = event.getByteBuf();
-            com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.markReaderIndex(buf);
+            Object buffer = event.getByteBuf();
+            com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.markReaderIndex(buffer);
 
-            com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readVarInt(buf); // entityId
-            int actionType = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readVarInt(buf);
+            com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readVarInt(buffer);
+            int actionType = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readVarInt(buffer);
 
-            com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.resetReaderIndex(buf);
+            com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.resetReaderIndex(buffer);
 
-            User user = event.getUser();
-            UUID playerId = user.getUUID();
+            UUID playerId = event.getUser().getUUID();
             if (playerId == null) return;
 
             if (actionType == 1) {
@@ -168,6 +148,59 @@ public class ClickHandler extends PacketListenerAbstract {
                 sneaking.put(playerId, false);
             }
         } catch (Exception ignored) {
+        }
+    }
+
+    private String resolveClickType(int interactionType, boolean isSneaking) {
+        if (interactionType == 0 || interactionType == 2) {
+            return isSneaking ? "shift-right" : "right";
+        }
+        if (interactionType == 1) {
+            return isSneaking ? "shift-left" : "left";
+        }
+        return null;
+    }
+
+    private ActionChain getRegisteredAction(int entityId, String clickType) {
+        switch (clickType) {
+            case "left":
+                return leftClickActions.get(entityId);
+            case "right":
+                return rightClickActions.get(entityId);
+            case "shift-left":
+                return shiftLeftClickActions.get(entityId);
+            case "shift-right":
+                return shiftRightClickActions.get(entityId);
+            default:
+                return null;
+        }
+    }
+
+    private boolean isHologramEntity(int entityId) {
+        if (hologramManager == null) return false;
+        return hologramManager.getAllHolograms().stream()
+                .anyMatch(hologram -> hologram.findPageByEntityId(entityId) >= 0);
+    }
+
+    private boolean isCoolingDown(UUID playerId) {
+        if (clickCooldownMs <= 0) return false;
+
+        Long lastClick = lastClickTime.get(playerId);
+        return lastClick != null
+                && System.currentTimeMillis() - lastClick < clickCooldownMs;
+    }
+
+    private ActionChain toChain(Action action) {
+        return action == null
+                ? null
+                : new ActionChain(java.util.Collections.singletonList(action));
+    }
+
+    private void putOrRemove(Map<Integer, ActionChain> map, int entityId, ActionChain action) {
+        if (action == null) {
+            map.remove(entityId);
+        } else {
+            map.put(entityId, action);
         }
     }
 
