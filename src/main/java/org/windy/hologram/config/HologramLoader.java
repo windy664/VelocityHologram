@@ -16,39 +16,43 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 悬浮字配置加载/保存器。
- * <p>支持多页配置，向后兼容旧的单页 lines: 格式。
+ * <p>对标 DecentHolograms 配置格式。
  *
- * <p>配置格式 v1.2（多页）：
+ * <p>配置格式（对标 DH）：
  * <pre>
- * x: 0.5
- * y: 100
- * z: 0.5
- * dimension: minecraft:overworld
- * server: lobby
- * view-distance: 48
- * line-spacing: 0.3
+ * location: world:0.500:100.0:0.500
+ * enabled: true
+ * display-range: 64
+ * update-range: 64
+ * update-interval: 20
+ * facing: 0.0
+ * down-origin: false
  * pages:
  *   - lines:
- *     - text: "§b第一页"
- *     - text: "§7内容A"
- *   - lines:
- *     - text: "§a第二页"
- *     - text: "§7内容B"
- * </pre>
- *
- * <p>旧格式（自动转为单页）：
- * <pre>
- * lines:
- *   - text: "§b标题"
+ *       - content: "§b标题"
+ *         height: 0.3
+ *         offsetX: 0.0
+ *         offsetZ: 0.0
+ *       - content: "§7内容"
+ *     actions:
+ *       RIGHT:
+ *         - "command:/spawn"
+ *       LEFT:
+ *         - "nextpage"
  * </pre>
  */
 public class HologramLoader {
 
     private final Path dataDir;
     private final DisplayFactoryRegistry displayRegistry;
+
+    // 位置解析正则：world:x:y:z
+    private static final Pattern LOCATION_PATTERN = Pattern.compile("^([^:]+):(-?[\\d.]+):(-?[\\d.]+):(-?[\\d.]+)$");
 
     public HologramLoader(Path dataDir, DisplayFactoryRegistry displayRegistry) {
         this.dataDir = dataDir;
@@ -80,165 +84,229 @@ public class HologramLoader {
         List<String> rawLines = Files.readAllLines(file.toPath());
         String name = file.getName().replace(".yml", "");
 
-        double x = 0, y = 0, z = 0;
+        // 顶层配置
+        String locationStr = null;
         boolean enabled = true;
-        double viewDistance = 48;
-        double updateDistance = 48;
-        double lineSpacing = 0.3;
+        int displayRange = 48;
+        int updateRange = 48;
         int updateInterval = 20;
-        float facingYaw = 0, facingPitch = 0;
-        String dimension = "minecraft:overworld";
-        String server = "";
+        float facing = 0;
+        boolean downOrigin = false;
         String permission = null;
-        java.util.Set<String> flags = new java.util.HashSet<>();
+        List<String> flags = new ArrayList<>();
 
-        // 解析结果：多页
-        List<List<LineConfig>> pages = new ArrayList<>();
-        List<java.util.Map<String, String>> pageActions = new ArrayList<>();
-        List<LineConfig> currentPage = null;
-        java.util.Map<String, String> currentPageActions = null;
-        LineConfig currentLine = null;
-        boolean inPages = false;
-        boolean inLines = false;
-        boolean inPageActions = false;
-        boolean inFlags = false;
+        // 页面解析
+        List<PageData> pagesData = new ArrayList<>();
+        PageData currentPage = null;
+        LineData currentLine = null;
+        String currentActionType = null;
+
+        // 解析状态
+        enum State { TOP, PAGES, LINES, LINE_DETAIL, ACTIONS, ACTION_LIST }
+        State state = State.TOP;
 
         for (String raw : rawLines) {
             String line = raw.trim();
             if (line.isEmpty() || line.startsWith("#")) continue;
 
-            // 检测 pages: 入口
-            if (line.equals("pages:")) {
-                inPages = true;
-                inLines = false;
-                inFlags = false;
-                continue;
-            }
+            int indent = getIndent(raw);
 
-            // 检测旧格式 lines: 入口（非 pages 内）
-            if (!inPages && line.equals("lines:")) {
-                inLines = true;
-                currentPage = new ArrayList<>();
-                currentPageActions = new java.util.HashMap<>();
-                inFlags = false;
-                continue;
-            }
-
-            // 检测 flags: 入口
-            if (line.equals("flags:")) {
-                inFlags = true;
-                continue;
-            }
-
-            if (inFlags && line.startsWith("- ") && line.length() > 2) {
-                flags.add(line.substring(2).trim().toLowerCase());
-                continue;
-            }
-
-            if (inPages) {
-                // 多页模式
-                if (line.startsWith("- lines:")) {
-                    // 新页开始
-                    if (currentPage != null) {
-                        pages.add(currentPage);
-                        pageActions.add(currentPageActions != null ? currentPageActions : new java.util.HashMap<>());
+            switch (state) {
+                case TOP:
+                    if (line.startsWith("location:")) {
+                        locationStr = line.substring(9).trim();
+                    } else if (line.startsWith("enabled:")) {
+                        enabled = Boolean.parseBoolean(line.substring(8).trim());
+                    } else if (line.startsWith("display-range:")) {
+                        displayRange = parseInt(line.substring(14).trim(), 48);
+                    } else if (line.startsWith("update-range:")) {
+                        updateRange = parseInt(line.substring(13).trim(), 48);
+                    } else if (line.startsWith("update-interval:")) {
+                        updateInterval = parseInt(line.substring(16).trim(), 20);
+                    } else if (line.startsWith("facing:")) {
+                        facing = parseFloat(line.substring(7).trim(), 0);
+                    } else if (line.startsWith("down-origin:")) {
+                        downOrigin = Boolean.parseBoolean(line.substring(12).trim());
+                    } else if (line.startsWith("permission:")) {
+                        permission = line.substring(11).trim().replace("\"", "");
+                    } else if (line.equals("flags:")) {
+                        // 下一行开始解析 flags
+                    } else if (line.startsWith("- ") && permission != null && flags != null) {
+                        flags.add(line.substring(2).trim().toLowerCase());
+                    } else if (line.equals("pages:")) {
+                        state = State.PAGES;
                     }
-                    currentPage = new ArrayList<>();
-                    currentPageActions = new java.util.HashMap<>();
-                    currentLine = null;
-                    inPageActions = false;
-                    continue;
-                }
-                if (line.startsWith("- lines")) {
-                    // 兼容 "- lines" 无冒号
-                    if (currentPage != null) {
-                        pages.add(currentPage);
-                        pageActions.add(currentPageActions != null ? currentPageActions : new java.util.HashMap<>());
-                    }
-                    currentPage = new ArrayList<>();
-                    currentPageActions = new java.util.HashMap<>();
-                    currentLine = null;
-                    inPageActions = false;
-                    continue;
-                }
-                if (currentPage == null) {
-                    // 可能是缩进的 "- lines:" 形式
+                    break;
+
+                case PAGES:
                     if (line.equals("- lines:") || line.equals("- lines")) {
-                        currentPage = new ArrayList<>();
-                        currentPageActions = new java.util.HashMap<>();
+                        currentPage = new PageData();
                         currentLine = null;
-                        inPageActions = false;
-                        continue;
+                        state = State.LINES;
                     }
-                    // 不在任何页内，跳过
-                }
-                // 检测页面动作
-                if (line.equals("actions:")) {
-                    inPageActions = true;
-                    continue;
-                }
-                if (inPageActions && !line.startsWith("- ")) {
-                    // 解析动作行: clickType: action
-                    int colonIdx = line.indexOf(':');
-                    if (colonIdx > 0) {
-                        String clickType = line.substring(0, colonIdx).trim();
-                        String actionStr = line.substring(colonIdx + 1).trim();
-                        if (currentPageActions != null) {
-                            currentPageActions.put(clickType, actionStr);
+                    break;
+
+                case LINES:
+                    if (line.equals("actions:") || line.equals("actions")) {
+                        state = State.ACTIONS;
+                        break;
+                    }
+                    if (line.startsWith("- content:") || line.startsWith("- content ")) {
+                        // 保存上一行
+                        if (currentLine != null) {
+                            currentPage.lines.add(currentLine);
+                        }
+                        currentLine = new LineData();
+                        currentLine.content = extractQuotedValue(line, 10);
+                        state = State.LINE_DETAIL;
+                    } else if (line.startsWith("- text:") || line.startsWith("- text ")) {
+                        // 兼容旧格式
+                        if (currentLine != null) {
+                            currentPage.lines.add(currentLine);
+                        }
+                        currentLine = new LineData();
+                        currentLine.content = extractQuotedValue(line, 7);
+                        state = State.LINE_DETAIL;
+                    } else if (line.equals("- lines:") || line.equals("- lines")) {
+                        // 新页
+                        if (currentPage != null) {
+                            if (currentLine != null) {
+                                currentPage.lines.add(currentLine);
+                                currentLine = null;
+                            }
+                            pagesData.add(currentPage);
+                        }
+                        currentPage = new PageData();
+                    }
+                    break;
+
+                case LINE_DETAIL:
+                    if (line.equals("actions:") || line.equals("actions")) {
+                        state = State.ACTIONS;
+                        break;
+                    }
+                    if (line.startsWith("- content:") || line.startsWith("- content ")) {
+                        // 新行
+                        if (currentLine != null) {
+                            currentPage.lines.add(currentLine);
+                        }
+                        currentLine = new LineData();
+                        currentLine.content = extractQuotedValue(line, 10);
+                    } else if (line.startsWith("- text:") || line.startsWith("- text ")) {
+                        // 兼容旧格式
+                        if (currentLine != null) {
+                            currentPage.lines.add(currentLine);
+                        }
+                        currentLine = new LineData();
+                        currentLine.content = extractQuotedValue(line, 7);
+                    } else if (line.equals("- lines:") || line.equals("- lines")) {
+                        // 新页
+                        if (currentPage != null) {
+                            if (currentLine != null) {
+                                currentPage.lines.add(currentLine);
+                                currentLine = null;
+                            }
+                            pagesData.add(currentPage);
+                        }
+                        currentPage = new PageData();
+                        state = State.LINES;
+                    } else if (currentLine != null) {
+                        if (line.startsWith("height:")) {
+                            currentLine.height = parseFloat(line.substring(7).trim(), 0.3f);
+                        } else if (line.startsWith("offsetX:") || line.startsWith("offset-x:")) {
+                            String val = line.contains("offsetX:") ? line.substring(8) : line.substring(9);
+                            currentLine.offsetX = parseFloat(val.trim(), 0);
+                        } else if (line.startsWith("offsetZ:") || line.startsWith("offset-z:")) {
+                            String val = line.contains("offsetZ:") ? line.substring(8) : line.substring(9);
+                            currentLine.offsetZ = parseFloat(val.trim(), 0);
+                        } else if (line.startsWith("permission:")) {
+                            currentLine.permission = line.substring(11).trim().replace("\"", "");
                         }
                     }
-                    continue;
-                }
-                if (line.startsWith("- ") && inPageActions) {
-                    inPageActions = false;
-                }
-                // 解析行
-                if (currentPage != null && !inPageActions) {
-                    currentLine = parseLine(line, currentLine, currentPage);
-                }
-            } else if (inLines) {
-                // 旧格式单页模式
-                currentLine = parseLine(line, currentLine, currentPage);
-            } else if (!inFlags) {
-                // 顶层配置
-                if (line.startsWith("x:")) x = parseDouble(line, 0);
-                else if (line.startsWith("y:")) y = parseDouble(line, 0);
-                else if (line.startsWith("z:")) z = parseDouble(line, 0);
-                else if (line.startsWith("enabled:")) enabled = !line.contains("false");
-                else if (line.startsWith("dimension:")) dimension = line.substring(10).trim();
-                else if (line.startsWith("server:")) server = line.substring(7).trim();
-                else if (line.startsWith("view-distance:")) viewDistance = parseDouble(line, 48);
-                else if (line.startsWith("update-distance:")) updateDistance = parseDouble(line, 48);
-                else if (line.startsWith("line-spacing:")) lineSpacing = parseDouble(line, 0.3);
-                else if (line.startsWith("update-interval:")) updateInterval = (int) parseDouble(line, 20);
-                else if (line.startsWith("facing-yaw:")) facingYaw = (float) parseDouble(line, 0);
-                else if (line.startsWith("facing-pitch:")) facingPitch = (float) parseDouble(line, 0);
-                else if (line.startsWith("permission:")) permission = line.substring(11).trim().replace("\"", "");
+                    break;
+
+                case ACTIONS:
+                    if (line.equals("RIGHT:") || line.equals("LEFT:") ||
+                            line.equals("SHIFT_RIGHT:") || line.equals("SHIFT_LEFT:")) {
+                        currentActionType = line.replace(":", "").trim();
+                        state = State.ACTION_LIST;
+                    } else if (line.equals("- lines:") || line.equals("- lines")) {
+                        // 新页
+                        if (currentPage != null) {
+                            if (currentLine != null) {
+                                currentPage.lines.add(currentLine);
+                                currentLine = null;
+                            }
+                            pagesData.add(currentPage);
+                        }
+                        currentPage = new PageData();
+                        state = State.LINES;
+                    }
+                    break;
+
+                case ACTION_LIST:
+                    if (line.startsWith("- ")) {
+                        String actionStr = line.substring(2).trim();
+                        if (currentActionType != null) {
+                            currentPage.actions.computeIfAbsent(currentActionType, k -> new ArrayList<>())
+                                    .add(actionStr);
+                        }
+                    } else if (line.equals("RIGHT:") || line.equals("LEFT:") ||
+                            line.equals("SHIFT_RIGHT:") || line.equals("SHIFT_LEFT:")) {
+                        currentActionType = line.replace(":", "").trim();
+                    } else if (line.equals("- lines:") || line.equals("- lines")) {
+                        // 新页
+                        if (currentPage != null) {
+                            if (currentLine != null) {
+                                currentPage.lines.add(currentLine);
+                                currentLine = null;
+                            }
+                            pagesData.add(currentPage);
+                        }
+                        currentPage = new PageData();
+                        state = State.LINES;
+                    } else {
+                        state = State.ACTIONS;
+                    }
+                    break;
             }
         }
 
         // 收尾
+        if (currentLine != null && currentPage != null) {
+            currentPage.lines.add(currentLine);
+        }
         if (currentPage != null) {
-            pages.add(currentPage);
-            pageActions.add(currentPageActions != null ? currentPageActions : new java.util.HashMap<>());
+            pagesData.add(currentPage);
+        }
+        if (pagesData.isEmpty()) {
+            pagesData.add(new PageData());
         }
 
-        // 如果没有解析到任何页，创建一个空页
-        if (pages.isEmpty()) {
-            pages.add(new ArrayList<>());
-            pageActions.add(new java.util.HashMap<>());
+        // 解析位置
+        double x = 0, y = 0, z = 0;
+        String dimension = "minecraft:overworld";
+        String server = "";
+
+        if (locationStr != null) {
+            Matcher matcher = LOCATION_PATTERN.matcher(locationStr);
+            if (matcher.matches()) {
+                dimension = normalizeDimension(matcher.group(1));
+                x = Double.parseDouble(matcher.group(2));
+                y = Double.parseDouble(matcher.group(3));
+                z = Double.parseDouble(matcher.group(4));
+            }
         }
 
         // 创建悬浮字
         Hologram hologram = manager.createHologram(name, x, y, z, dimension, server);
         hologram.setEnabled(enabled);
-        hologram.setViewDistance(viewDistance);
-        hologram.setUpdateDistance(updateDistance);
-        hologram.setLineSpacing(lineSpacing);
+        hologram.setViewDistance(displayRange);
+        hologram.setUpdateDistance(updateRange);
         hologram.setUpdateInterval(updateInterval);
-        if (facingYaw != 0 || facingPitch != 0) {
-            hologram.setFacing(facingYaw, facingPitch);
-        }
+        hologram.setFacing(facing, 0);
+        hologram.setDownOrigin(downOrigin);
+
         if (permission != null && !permission.isEmpty()) {
             hologram.setPermission(permission);
         }
@@ -247,124 +315,64 @@ public class HologramLoader {
         }
 
         // 填充页和行
-        for (int pi = 0; pi < pages.size(); pi++) {
+        for (int pi = 0; pi < pagesData.size(); pi++) {
+            PageData pageData = pagesData.get(pi);
             Page page = (pi == 0) ? hologram.getPage(0) : hologram.addPage();
             if (page == null) continue;
 
-            // 加载页面动作
-            java.util.Map<String, String> actions = pageActions.get(pi);
-            if (actions != null) {
-                for (var entry : actions.entrySet()) {
-                    Action action = ActionFactory.parse(entry.getValue());
-                    if (action != null) {
-                        page.addAction(entry.getKey(), action);
-                    }
-                }
-            }
-
-            for (LineConfig lc : pages.get(pi)) {
-                DisplayConfig config = buildDisplayConfig(lc);
+            // 加载行
+            for (LineData lineData : pageData.lines) {
+                DisplayConfig config = parseDisplayConfig(lineData);
                 HologramLine holoLine = page.addLine(config);
 
-                // 行偏移
-                if (lc.offsetY > 0) holoLine.setOffsetY(lc.offsetY);
-                if (lc.offsetX != 0) holoLine.setOffsetX(lc.offsetX);
-                if (lc.offsetZ != 0) holoLine.setOffsetZ(lc.offsetZ);
-                if (lc.lineHeight > 0) holoLine.setLineHeight(lc.lineHeight);
+                if (lineData.height > 0) holoLine.setLineHeight(lineData.height);
+                if (lineData.offsetX != 0) holoLine.setOffsetX(lineData.offsetX);
+                if (lineData.offsetZ != 0) holoLine.setOffsetZ(lineData.offsetZ);
+                if (lineData.permission != null) holoLine.setPermission(lineData.permission);
+            }
 
-                // 行级权限和 Flag
-                if (lc.permission != null && !lc.permission.isEmpty()) {
-                    holoLine.setPermission(lc.permission);
-                }
-                for (String flag : lc.flags) {
-                    holoLine.addFlag(flag);
-                }
-
-                // 点击动作
-                if (lc.leftClick != null || lc.rightClick != null
-                        || lc.shiftLeftClick != null || lc.shiftRightClick != null) {
-                    Action left = lc.leftClick != null ? ActionFactory.parse(lc.leftClick) : null;
-                    Action right = lc.rightClick != null ? ActionFactory.parse(lc.rightClick) : null;
-                    Action shiftLeft = lc.shiftLeftClick != null ? ActionFactory.parse(lc.shiftLeftClick) : null;
-                    Action shiftRight = lc.shiftRightClick != null ? ActionFactory.parse(lc.shiftRightClick) : null;
-                    page.setLineAction(page.getLineCount() - 1, left, right, shiftLeft, shiftRight, null);
+            // 加载页面动作
+            for (var entry : pageData.actions.entrySet()) {
+                String clickType = entry.getKey();
+                for (String actionStr : entry.getValue()) {
+                    Action action = ActionFactory.parse(actionStr);
+                    if (action != null) {
+                        page.addAction(clickType, action);
+                    }
                 }
             }
         }
     }
 
     /**
-     * 解析一行配置，返回 currentLine（可能是新的或更新后的）。
+     * 解析行配置。
      */
-    private LineConfig parseLine(String line, LineConfig currentLine, List<LineConfig> target) {
-        if (line.startsWith("- text:") || line.startsWith("- item:") || line.startsWith("- block:")
-                || line.startsWith("- entity:") || line.startsWith("- head:") || line.startsWith("- smallhead:")) {
-            if (currentLine != null) target.add(currentLine);
-            currentLine = new LineConfig();
-            if (line.startsWith("- text:")) {
-                currentLine.type = DisplayEntityType.TEXT_DISPLAY;
-                currentLine.text = extractQuotedValue(line, 7);
-            } else if (line.startsWith("- item:")) {
-                currentLine.type = DisplayEntityType.ITEM_DISPLAY;
-                currentLine.itemId = extractQuotedValue(line, 7);
-            } else if (line.startsWith("- block:")) {
-                currentLine.type = DisplayEntityType.BLOCK_DISPLAY;
-                currentLine.blockId = extractQuotedValue(line, 8);
-            } else if (line.startsWith("- entity:")) {
-                currentLine.type = DisplayEntityType.ENTITY;
-                currentLine.entityId = extractQuotedValue(line, 9);
-            } else if (line.startsWith("- head:")) {
-                currentLine.type = DisplayEntityType.HEAD;
-                currentLine.blockId = extractQuotedValue(line, 7);
-            } else if (line.startsWith("- smallhead:")) {
-                currentLine.type = DisplayEntityType.SMALLHEAD;
-                currentLine.blockId = extractQuotedValue(line, 12);
-            }
-        } else if (currentLine != null) {
-            if (line.startsWith("left-click:")) currentLine.leftClick = line.substring(11).trim();
-            else if (line.startsWith("right-click:")) currentLine.rightClick = line.substring(12).trim();
-            else if (line.startsWith("shift-left-click:")) currentLine.shiftLeftClick = line.substring(17).trim();
-            else if (line.startsWith("shift-right-click:")) currentLine.shiftRightClick = line.substring(18).trim();
-            else if (line.startsWith("billboard:")) currentLine.billboard = line.substring(10).trim();
-            else if (line.startsWith("scale:")) currentLine.scale = (float) parseDouble(line, 1.0);
-            else if (line.startsWith("scale-x:")) currentLine.scaleX = (float) parseDouble(line, 1.0);
-            else if (line.startsWith("scale-y:")) currentLine.scaleY = (float) parseDouble(line, 1.0);
-            else if (line.startsWith("scale-z:")) currentLine.scaleZ = (float) parseDouble(line, 1.0);
-            else if (line.startsWith("opacity:")) currentLine.opacity = (byte) Math.max(0, Math.min(255, (int) parseDouble(line, 255)));
-            else if (line.startsWith("background:")) currentLine.backgroundColor = parseArgb(line);
-            else if (line.startsWith("offset-y:")) currentLine.offsetY = parseDouble(line, 0);
-            else if (line.startsWith("offset-x:")) currentLine.offsetX = parseDouble(line, 0);
-            else if (line.startsWith("offset-z:")) currentLine.offsetZ = parseDouble(line, 0);
-            else if (line.startsWith("line-width:")) currentLine.lineWidth = (int) parseDouble(line, 200);
-            else if (line.startsWith("line-height:")) currentLine.lineHeight = parseDouble(line, 0);
-            else if (line.startsWith("permission:")) currentLine.permission = line.substring(11).trim().replace("\"", "");
-            else if (line.startsWith("flags:")) {} // 下面解析
-            else if (line.startsWith("- ") && line.length() > 2) {
-                // flags 列表项
-                currentLine.flags.add(line.substring(2).trim().toLowerCase());
-            }
-        }
-        return currentLine;
-    }
+    private DisplayConfig parseDisplayConfig(LineData lineData) {
+        String content = lineData.content;
 
-    private DisplayConfig buildDisplayConfig(LineConfig lc) {
-        DisplayConfig.Builder builder = DisplayConfig.builder(lc.type);
-        if (lc.type == DisplayEntityType.TEXT_DISPLAY) builder.text(lc.text != null ? lc.text : "");
-        else if (lc.type == DisplayEntityType.ITEM_DISPLAY) builder.itemId(lc.itemId != null ? lc.itemId : "minecraft:stone");
-        else if (lc.type == DisplayEntityType.BLOCK_DISPLAY) builder.blockId(lc.blockId != null ? lc.blockId : "minecraft:stone");
-        else if (lc.type == DisplayEntityType.ENTITY) builder.blockId(lc.entityId != null ? lc.entityId : "minecraft:pig");
-        else if (lc.type == DisplayEntityType.HEAD || lc.type == DisplayEntityType.SMALLHEAD)
-            builder.blockId(lc.blockId != null ? lc.blockId : "minecraft:stone");
-
-        if (lc.billboard != null) builder.billboard(DisplayConfig.Billboard.fromConfig(lc.billboard));
-        if (lc.scale > 0) builder.scale(lc.scale, lc.scale, lc.scale);
-        else if (lc.scaleX > 0 || lc.scaleY > 0 || lc.scaleZ > 0) {
-            builder.scale(lc.scaleX > 0 ? lc.scaleX : 1f, lc.scaleY > 0 ? lc.scaleY : 1f, lc.scaleZ > 0 ? lc.scaleZ : 1f);
+        // 检测行类型
+        if (content.toUpperCase().startsWith("#ICON:")) {
+            return DisplayConfig.builder(DisplayEntityType.ICON)
+                    .blockId(content.substring(6))
+                    .build();
+        } else if (content.toUpperCase().startsWith("#HEAD:")) {
+            return DisplayConfig.builder(DisplayEntityType.HEAD)
+                    .blockId(content.substring(6))
+                    .build();
+        } else if (content.toUpperCase().startsWith("#SMALLHEAD:")) {
+            return DisplayConfig.builder(DisplayEntityType.SMALLHEAD)
+                    .blockId(content.substring(11))
+                    .build();
+        } else if (content.toUpperCase().startsWith("#ENTITY:")) {
+            return DisplayConfig.builder(DisplayEntityType.ENTITY)
+                    .blockId(content.substring(8))
+                    .build();
+        } else {
+            // 默认文本
+            return DisplayConfig.builder(DisplayEntityType.TEXT_DISPLAY)
+                    .text(content)
+                    .build();
         }
-        if (lc.backgroundColor != 0) builder.backgroundColor(lc.backgroundColor);
-        if (lc.opacity > 0) builder.textOpacity(lc.opacity);
-        if (lc.lineWidth > 0) builder.lineWidth(lc.lineWidth);
-        return builder.build();
     }
 
     // ===== 保存 =====
@@ -382,21 +390,19 @@ public class HologramLoader {
         File file = new File(configDir, hologram.getName() + ".yml");
         List<String> out = new ArrayList<>();
 
+        // 顶层配置（对标 DH 格式）
         out.add("# 悬浮字配置: " + hologram.getName());
-        out.add("x: " + hologram.getPosition().x());
-        out.add("y: " + hologram.getPosition().y());
-        out.add("z: " + hologram.getPosition().z());
-        out.add("dimension: " + hologram.getPosition().dimension());
-        out.add("server: " + hologram.getPosition().server());
+        out.add("location: " + hologram.getPosition().dimension()
+                + ":" + hologram.getPosition().x()
+                + ":" + hologram.getPosition().y()
+                + ":" + hologram.getPosition().z());
         out.add("enabled: " + hologram.isEnabled());
-        out.add("view-distance: " + hologram.getViewDistance());
-        out.add("update-distance: " + hologram.getUpdateDistance());
-        out.add("line-spacing: " + hologram.getLineSpacing());
+        out.add("display-range: " + (int) hologram.getViewDistance());
+        out.add("update-range: " + (int) hologram.getUpdateDistance());
         out.add("update-interval: " + hologram.getUpdateInterval());
-        if (hologram.getFacingYaw() != 0 || hologram.getFacingPitch() != 0) {
-            out.add("facing-yaw: " + hologram.getFacingYaw());
-            out.add("facing-pitch: " + hologram.getFacingPitch());
-        }
+        out.add("facing: " + hologram.getFacingYaw());
+        out.add("down-origin: " + hologram.isDownOrigin());
+
         if (hologram.getPermission() != null) {
             out.add("permission: \"" + hologram.getPermission() + "\"");
         }
@@ -407,87 +413,43 @@ public class HologramLoader {
             }
         }
 
-        boolean multiPage = hologram.getPageCount() > 1;
-
-        if (multiPage) {
-            out.add("pages:");
-        }
-
+        // 页面
+        out.add("pages:");
         for (int pi = 0; pi < hologram.getPageCount(); pi++) {
             Page page = hologram.getPage(pi);
             if (page == null) continue;
 
-            if (multiPage) {
-                out.add("  - lines:");
-            } else {
-                out.add("lines:");
-            }
-
-            String indent = multiPage ? "    " : "  ";
-
-            // 保存页面动作
-            if (!page.getActions().isEmpty()) {
-                out.add(indent + "actions:");
-                for (var entry : page.getActions().entrySet()) {
-                    out.add(indent + "  " + entry.getKey() + ": " + ActionFactory.serialize(entry.getValue()));
-                }
-            }
-
+            out.add("  - lines:");
             for (var line : page.getLines()) {
                 if (!(line instanceof HologramLine)) continue;
                 HologramLine hl = (HologramLine) line;
                 DisplayConfig config = hl.getDisplayConfig();
 
+                // 行内容
+                String content;
                 switch (config.type()) {
-                    case TEXT_DISPLAY: out.add(indent + "- text: \"" + escapeYaml(config.text()) + "\""); break;
-                    case ITEM_DISPLAY: out.add(indent + "- item: \"" + escapeYaml(config.itemId()) + "\""); break;
-                    case BLOCK_DISPLAY: out.add(indent + "- block: \"" + escapeYaml(config.blockId()) + "\""); break;
-                    case ENTITY: out.add(indent + "- entity: \"" + escapeYaml(config.blockId()) + "\""); break;
-                    case HEAD: out.add(indent + "- head: \"" + escapeYaml(config.blockId()) + "\""); break;
-                    case SMALLHEAD: out.add(indent + "- smallhead: \"" + escapeYaml(config.blockId()) + "\""); break;
+                    case ICON: content = "#ICON:" + config.blockId(); break;
+                    case HEAD: content = "#HEAD:" + config.blockId(); break;
+                    case SMALLHEAD: content = "#SMALLHEAD:" + config.blockId(); break;
+                    case ENTITY: content = "#ENTITY:" + config.blockId(); break;
+                    default: content = config.text() != null ? config.text() : ""; break;
                 }
+                out.add("        - content: \"" + escapeYaml(content) + "\"");
 
-                if (config.billboard() != DisplayConfig.Billboard.CENTER)
-                    out.add(indent + "  billboard: " + config.billboard().name().toLowerCase());
-                if (config.scaleX() != 1f || config.scaleY() != 1f || config.scaleZ() != 1f) {
-                    if (config.scaleX() == config.scaleY() && config.scaleY() == config.scaleZ())
-                        out.add(indent + "  scale: " + config.scaleX());
-                    else {
-                        out.add(indent + "  scale-x: " + config.scaleX());
-                        out.add(indent + "  scale-y: " + config.scaleY());
-                        out.add(indent + "  scale-z: " + config.scaleZ());
-                    }
-                }
-                if (config.textOpacity() != (byte) 0xFF)
-                    out.add(indent + "  opacity: " + (config.textOpacity() & 0xFF));
-                if (config.backgroundColor() != 0x40000000)
-                    out.add(indent + "  background: 0x" + Integer.toHexString(config.backgroundColor()));
-                if (config.lineWidth() != 200)
-                    out.add(indent + "  line-width: " + config.lineWidth());
-                if (hl.getOffsetY() > 0) out.add(indent + "  offset-y: " + hl.getOffsetY());
-                if (hl.getOffsetX() != 0) out.add(indent + "  offset-x: " + hl.getOffsetX());
-                if (hl.getOffsetZ() != 0) out.add(indent + "  offset-z: " + hl.getOffsetZ());
-                if (hl.getLineHeight() > 0) out.add(indent + "  line-height: " + hl.getLineHeight());
+                // 行属性
+                if (hl.getLineHeight() > 0) out.add("          height: " + hl.getLineHeight());
+                if (hl.getOffsetX() != 0) out.add("          offsetX: " + hl.getOffsetX());
+                if (hl.getOffsetZ() != 0) out.add("          offsetZ: " + hl.getOffsetZ());
+                if (hl.getPermission() != null) out.add("          permission: \"" + hl.getPermission() + "\"");
+            }
 
-                // 行级权限和 Flag
-                if (hl.getPermission() != null) {
-                    out.add(indent + "  permission: \"" + hl.getPermission() + "\"");
+            // 页面动作
+            if (!page.getActions().isEmpty()) {
+                out.add("    actions:");
+                for (var entry : page.getActions().entrySet()) {
+                    out.add("      " + entry.getKey() + ":");
+                    out.add("        - \"" + ActionFactory.serialize(entry.getValue()) + "\"");
                 }
-                if (!hl.getFlags().isEmpty()) {
-                    out.add(indent + "  flags:");
-                    for (String flag : hl.getFlags()) {
-                        out.add(indent + "    - " + flag);
-                    }
-                }
-
-                if (hl.getLeftClickAction() != null)
-                    out.add(indent + "  left-click: " + ActionFactory.serialize(hl.getLeftClickAction()));
-                if (hl.getRightClickAction() != null)
-                    out.add(indent + "  right-click: " + ActionFactory.serialize(hl.getRightClickAction()));
-                if (hl.getShiftLeftClickAction() != null)
-                    out.add(indent + "  shift-left-click: " + ActionFactory.serialize(hl.getShiftLeftClickAction()));
-                if (hl.getShiftRightClickAction() != null)
-                    out.add(indent + "  shift-right-click: " + ActionFactory.serialize(hl.getShiftRightClickAction()));
             }
         }
 
@@ -502,37 +464,53 @@ public class HologramLoader {
     private void createDefaultConfig(File configDir) {
         File f = new File(configDir, "welcome.yml");
         List<String> lines = List.of(
-                "# 悬浮字配置示例（多页）",
-                "x: 0.5",
-                "y: 100",
-                "z: 0.5",
-                "dimension: minecraft:overworld",
-                "server: lobby",
-                "view-distance: 48",
-                "line-spacing: 0.3",
+                "# 悬浮字配置示例（对标 DecentHolograms 格式）",
+                "location: minecraft:overworld:0.500:100.0:0.500",
+                "enabled: true",
+                "display-range: 48",
+                "update-range: 48",
+                "update-interval: 20",
+                "facing: 0.0",
+                "down-origin: false",
                 "pages:",
                 "  - lines:",
-                "    - text: \"§b§l欢迎来到本服\"",
-                "      billboard: center",
-                "      right-click: \"command:/spawn\"",
-                "    - text: \"§7在线: %server_online%/%server_max_players%\"",
-                "    - text: \"§e左键翻页 →\"",
-                "      left-click: \"nextpage\"",
+                "      - content: \"§b§l欢迎来到本服\"",
+                "        height: 0.3",
+                "      - content: \"§7在线: %server_online%/%server_max_players%\"",
+                "      - content: \"§e左键翻页 →\"",
+                "    actions:",
+                "      LEFT:",
+                "        - \"nextpage\"",
                 "  - lines:",
-                "    - text: \"§a§l第二页\"",
-                "      billboard: center",
-                "    - text: \"§7这是一悬浮字的第二页\"",
-                "    - text: \"§c← 右键翻回\"",
-                "      right-click: \"prevpage\""
+                "      - content: \"§a§l第二页\"",
+                "        height: 0.3",
+                "      - content: \"§7这是悬浮字的第二页\"",
+                "      - content: \"§c← 右键翻回\"",
+                "    actions:",
+                "      RIGHT:",
+                "        - \"prevpage\""
         );
         try { Files.write(f.toPath(), lines); } catch (IOException ignored) {}
     }
 
-    // ===== 工具 =====
+    // ===== 工具方法 =====
 
-    private double parseDouble(String line, double def) {
-        try { return Double.parseDouble(line.substring(line.indexOf(':') + 1).trim()); }
-        catch (Exception e) { return def; }
+    private int getIndent(String line) {
+        int indent = 0;
+        for (char c : line.toCharArray()) {
+            if (c == ' ') indent++;
+            else if (c == '\t') indent += 4;
+            else break;
+        }
+        return indent;
+    }
+
+    private int parseInt(String str, int def) {
+        try { return Integer.parseInt(str); } catch (Exception e) { return def; }
+    }
+
+    private float parseFloat(String str, float def) {
+        try { return Float.parseFloat(str); } catch (Exception e) { return def; }
     }
 
     private String extractQuotedValue(String line, int prefixLen) {
@@ -541,12 +519,15 @@ public class HologramLoader {
         return v;
     }
 
-    private int parseArgb(String line) {
-        try {
-            String v = line.substring(line.indexOf(':') + 1).trim();
-            if (v.startsWith("0x") || v.startsWith("0X")) return (int) Long.parseLong(v.substring(2), 16);
-            return Integer.parseInt(v);
-        } catch (Exception e) { return 0; }
+    private String normalizeDimension(String dimension) {
+        if (dimension == null || dimension.isEmpty()) return "minecraft:overworld";
+        if (dimension.contains(":")) return dimension.toLowerCase();
+        switch (dimension.toLowerCase()) {
+            case "overworld": return "minecraft:overworld";
+            case "nether": return "minecraft:the_nether";
+            case "end": return "minecraft:the_end";
+            default: return "minecraft:" + dimension.toLowerCase();
+        }
     }
 
     private String escapeYaml(String text) {
@@ -554,16 +535,18 @@ public class HologramLoader {
         return text.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
-    private static class LineConfig {
-        DisplayEntityType type = DisplayEntityType.TEXT_DISPLAY;
-        String text, itemId, blockId, entityId;
-        String leftClick, rightClick, shiftLeftClick, shiftRightClick;
-        String billboard;
+    // ===== 内部数据类 =====
+
+    private static class PageData {
+        List<LineData> lines = new ArrayList<>();
+        java.util.Map<String, List<String>> actions = new java.util.LinkedHashMap<>();
+    }
+
+    private static class LineData {
+        String content = "";
+        double height = 0;
+        double offsetX = 0;
+        double offsetZ = 0;
         String permission;
-        java.util.Set<String> flags = new java.util.HashSet<>();
-        float scale, scaleX, scaleY, scaleZ;
-        byte opacity;
-        int backgroundColor, lineWidth;
-        double offsetY, offsetX, offsetZ, lineHeight;
     }
 }
