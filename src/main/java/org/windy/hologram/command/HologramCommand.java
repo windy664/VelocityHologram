@@ -3,6 +3,7 @@ package org.windy.hologram.command;
 import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.Player;
+import com.velocitypowered.api.proxy.ProxyServer;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.windy.hologram.action.ClickHandler;
 import org.windy.hologram.config.HologramLoader;
@@ -16,6 +17,7 @@ import org.windy.hologram.hologram.Page;
 import org.windy.hologram.tracker.PlayerTracker;
 import org.windy.hologram.tracker.PlayerState;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
@@ -41,13 +43,18 @@ public class HologramCommand implements SimpleCommand {
     private final PlayerTracker playerTracker;
     private final HologramLoader hologramLoader;
     private final ClickHandler clickHandler;
+    private final ProxyServer proxy;
+    private final Path dataDir;
 
     public HologramCommand(HologramManager hologramManager, PlayerTracker playerTracker,
-                           HologramLoader hologramLoader, ClickHandler clickHandler) {
+                           HologramLoader hologramLoader, ClickHandler clickHandler,
+                           ProxyServer proxy, Path dataDir) {
         this.hologramManager = hologramManager;
         this.playerTracker = playerTracker;
         this.hologramLoader = hologramLoader;
         this.clickHandler = clickHandler;
+        this.proxy = proxy;
+        this.dataDir = dataDir;
     }
 
     @Override
@@ -101,6 +108,10 @@ public class HologramCommand implements SimpleCommand {
             case "addsmallhead":
                 if (!checkPerm(source, "velocityhologram.command.edit")) return;
                 handleAddHead(source, args, true);
+                break;
+            case "addicon":
+                if (!checkPerm(source, "velocityhologram.command.edit")) return;
+                handleAddIcon(source, args);
                 break;
             case "addpage":
                 if (!checkPerm(source, "velocityhologram.command.edit")) return;
@@ -217,6 +228,26 @@ public class HologramCommand implements SimpleCommand {
                 if (!checkPerm(source, "velocityhologram.command.edit")) return;
                 handlePageCommand(source, args);
                 break;
+            case "downorigin":
+                if (!checkPerm(source, "velocityhologram.command.edit")) return;
+                handleDownOrigin(source, args);
+                break;
+            case "alwaysface":
+                if (!checkPerm(source, "velocityhologram.command.edit")) return;
+                handleAlwaysFace(source, args);
+                break;
+            case "hide":
+                if (!checkPerm(source, "velocityhologram.command.admin")) return;
+                handleHidePlayer(source, args, true);
+                break;
+            case "show":
+                if (!checkPerm(source, "velocityhologram.command.admin")) return;
+                handleHidePlayer(source, args, false);
+                break;
+            case "convert":
+                if (!checkPerm(source, "velocityhologram.command.admin")) return;
+                handleConvert(source, args);
+                break;
             default:
                 sendHelp(source);
                 break;
@@ -227,11 +258,12 @@ public class HologramCommand implements SimpleCommand {
 
     private static final List<String> SUBCOMMANDS = List.of(
             "create", "delete", "addline", "additem", "addblock", "addentity",
-            "addhead", "addsmallhead", "setline", "removeline", "insertline", "swaplines",
+            "addhead", "addsmallhead", "addicon", "setline", "removeline", "insertline", "swaplines",
             "addpage", "removepage", "switchpage", "editpage", "insertpage", "swappages",
             "addflag", "removeflag",
             "move", "movehere", "clone", "center", "setoffset", "near",
             "rename", "enable", "disable", "align", "setfacing",
+            "downorigin", "alwaysface", "hide", "show", "convert",
             "line", "page",
             "list", "save", "reload", "debug", "tp", "info", "permission", "perm"
     );
@@ -534,6 +566,24 @@ public class HologramCommand implements SimpleCommand {
         hologram.refresh();
         hologramLoader.save(hologram);
         msg(source, "§a已添加 " + label + " 行 '" + itemId + "' 到悬浮字 '" + args[1] + "'");
+    }
+
+    private void handleAddIcon(CommandSource source, String[] args) {
+        if (args.length < 3) {
+            msg(source, "§c用法: /holo addicon <名称> <物品ID>");
+            msg(source, "§7例如: /holo addicon test diamond_sword");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[1]);
+        if (hologram == null) return;
+        String itemId = args[2];
+        DisplayConfig config = DisplayConfig.builder(DisplayEntityType.ICON)
+                .blockId(itemId)
+                .build();
+        hologram.addLine(config);
+        hologram.refresh();
+        hologramLoader.save(hologram);
+        msg(source, "§a已添加 ICON 行 '" + itemId + "' 到悬浮字 '" + args[1] + "'");
     }
 
     private void handleSetLine(CommandSource source, String[] args) {
@@ -1167,6 +1217,96 @@ public class HologramCommand implements SimpleCommand {
         msg(source, "§a已设置悬浮字 '" + args[1] + "' 的朝向 (yaw=" +
             String.format("%.1f", state.getYaw()) + ", pitch=" +
             String.format("%.1f", state.getPitch()) + ")");
+    }
+
+    private void handleDownOrigin(CommandSource source, String[] args) {
+        if (args.length < 2) {
+            msg(source, "§c用法: /holo downorigin <名称>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[1]);
+        if (hologram == null) return;
+        hologram.setDownOrigin(!hologram.isDownOrigin());
+        hologram.refresh();
+        hologramLoader.save(hologram);
+        msg(source, "§a已" + (hologram.isDownOrigin() ? "启用" : "禁用") + "悬浮字 '" + args[1] + "' 的向下生长");
+    }
+
+    private void handleAlwaysFace(CommandSource source, String[] args) {
+        if (args.length < 2) {
+            msg(source, "§c用法: /holo alwaysface <名称>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[1]);
+        if (hologram == null) return;
+        hologram.setAlwaysFacePlayer(!hologram.isAlwaysFacePlayer());
+        hologram.refresh();
+        hologramLoader.save(hologram);
+        msg(source, "§a已" + (hologram.isAlwaysFacePlayer() ? "启用" : "禁用") + "悬浮字 '" + args[1] + "' 的始终面向玩家");
+    }
+
+    private void handleHidePlayer(CommandSource source, String[] args, boolean hide) {
+        if (args.length < 3) {
+            msg(source, "§c用法: /holo " + (hide ? "hide" : "show") + " <名称> <玩家名>");
+            return;
+        }
+        Hologram hologram = getHologramOrWarn(source, args[1]);
+        if (hologram == null) return;
+
+        // 查找玩家
+        String playerName = args[2];
+        var playerOpt = proxy.getPlayer(playerName);
+        if (playerOpt.isEmpty()) {
+            msg(source, "§c玩家 '" + playerName + "' 不在线");
+            return;
+        }
+
+        UUID playerId = playerOpt.get().getUniqueId();
+        if (hide) {
+            hologram.setHidePlayer(playerId);
+            hologram.hideFrom(playerId);
+            msg(source, "§a已对玩家 '" + playerName + "' 隐藏悬浮字 '" + args[1] + "'");
+        } else {
+            hologram.removeHidePlayer(playerId);
+            hologram.showTo(playerId);
+            msg(source, "§a已对玩家 '" + playerName + "' 显示悬浮字 '" + args[1] + "'");
+        }
+        hologramLoader.save(hologram);
+    }
+
+    private void handleConvert(CommandSource source, String[] args) {
+        if (args.length < 3) {
+            msg(source, "§c用法: /holo convert <decentholograms|holographicdisplays> <路径>");
+            return;
+        }
+
+        String type = args[1].toLowerCase();
+        String path = args[2];
+
+        org.windy.hologram.convertor.IConvertor convertor;
+        switch (type) {
+            case "decentholograms":
+            case "dh":
+                convertor = new org.windy.hologram.convertor.DecentHologramsConvertor(dataDir);
+                break;
+            case "holographicdisplays":
+            case "hd":
+                convertor = new org.windy.hologram.convertor.HolographicDisplaysConvertor(dataDir);
+                break;
+            default:
+                msg(source, "§c不支持的类型: " + type);
+                msg(source, "§7支持: decentholograms (dh), holographicdisplays (hd)");
+                return;
+        }
+
+        msg(source, "§e正在从 " + convertor.getName() + " 转换...");
+        if (convertor.convert(path)) {
+            msg(source, "§a转换完成！");
+            // 重载配置
+            handleReload(source);
+        } else {
+            msg(source, "§c转换失败，请检查路径和配置文件");
+        }
     }
 
     private void handleInsertPage(CommandSource source, String[] args) {

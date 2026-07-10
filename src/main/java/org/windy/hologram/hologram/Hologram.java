@@ -43,6 +43,7 @@ public class Hologram implements IHologram {
 
     // 配置
     private boolean enabled = true;
+    private DisableCause disableCause = DisableCause.NONE;
     private double viewDistance = 48.0;      // 显示范围（进入此范围才显示）
     private double updateDistance = 48.0;    // 更新范围（在此范围内才接收更新）
     private double lineSpacing = 0.3;
@@ -54,6 +55,14 @@ public class Hologram implements IHologram {
     // 朝向
     private float facingYaw = 0;
     private float facingPitch = 0;
+
+    // 生长原点和面向
+    private boolean downOrigin = false;       // 向下生长（行从上往下排列）
+    private boolean alwaysFacePlayer = false; // 始终面向玩家
+
+    // 每玩家可见性控制
+    private final Set<UUID> hidePlayers = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> showPlayers = ConcurrentHashMap.newKeySet();
 
     public Hologram(String name, HologramPos position, ClickHandler clickHandler,
                     PlaceholderManager placeholderManager, DisplayFactoryRegistry displayRegistry,
@@ -88,7 +97,35 @@ public class Hologram implements IHologram {
     // ===== 启用/禁用 =====
 
     public boolean isEnabled() { return enabled; }
-    public void setEnabled(boolean enabled) { this.enabled = enabled; }
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+        if (enabled) this.disableCause = DisableCause.NONE;
+    }
+
+    public void disable(DisableCause cause) {
+        this.enabled = false;
+        this.disableCause = cause;
+    }
+
+    public DisableCause getDisableCause() { return disableCause; }
+
+    // ===== 生长原点和面向 =====
+
+    public boolean isDownOrigin() { return downOrigin; }
+    public void setDownOrigin(boolean downOrigin) { this.downOrigin = downOrigin; }
+
+    public boolean isAlwaysFacePlayer() { return alwaysFacePlayer; }
+    public void setAlwaysFacePlayer(boolean alwaysFacePlayer) { this.alwaysFacePlayer = alwaysFacePlayer; }
+
+    // ===== 每玩家可见性控制 =====
+
+    public void setHidePlayer(UUID playerId) { hidePlayers.add(playerId); }
+    public void removeHidePlayer(UUID playerId) { hidePlayers.remove(playerId); }
+    public boolean isHideState(UUID playerId) { return hidePlayers.contains(playerId); }
+
+    public void setShowPlayer(UUID playerId) { showPlayers.add(playerId); }
+    public void removeShowPlayer(UUID playerId) { showPlayers.remove(playerId); }
+    public boolean isShowState(UUID playerId) { return showPlayers.contains(playerId); }
 
     // ===== 朝向 =====
 

@@ -7,7 +7,8 @@ public enum DisplayEntityType {
     BLOCK_DISPLAY,
     ENTITY,
     HEAD,
-    SMALLHEAD;
+    SMALLHEAD,
+    ICON;
 
     public static DisplayEntityType fromConfig(String type) {
         if (type == null) return TEXT_DISPLAY;
@@ -17,6 +18,7 @@ public enum DisplayEntityType {
             case "entity": return ENTITY;
             case "head": return HEAD;
             case "smallhead": return SMALLHEAD;
+            case "icon": return ICON;
             default: return TEXT_DISPLAY;
         }
     }
@@ -29,6 +31,7 @@ public enum DisplayEntityType {
             case ENTITY: return "entity";
             case HEAD: return "head";
             case SMALLHEAD: return "smallhead";
+            case ICON: return "icon";
             default: return "text";
         }
     }

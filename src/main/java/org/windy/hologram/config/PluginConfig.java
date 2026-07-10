@@ -96,6 +96,31 @@ public class PluginConfig {
         return getDefaultsInt("background-color", 0x40000000);
     }
 
+    public int getClickCooldown() {
+        return getDefaultsInt("click-cooldown", 1);
+    }
+
+    public boolean isEyeLevelPositioning() {
+        Object defaults = root.get("defaults");
+        if (defaults instanceof Map) {
+            Object val = ((Map<String, Object>) defaults).get("eye-level-positioning");
+            if (val instanceof Boolean) return (Boolean) val;
+        }
+        return false;
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, String> getCustomReplacements() {
+        Object defaults = root.get("defaults");
+        if (defaults instanceof Map) {
+            Object val = ((Map<String, Object>) defaults).get("custom-replacements");
+            if (val instanceof Map) {
+                return (Map<String, String>) val;
+            }
+        }
+        return Collections.emptyMap();
+    }
+
     @SuppressWarnings("unchecked")
     private double getDefaultsDouble(String key, double def) {
         Object defaults = root.get("defaults");

@@ -29,11 +29,22 @@ public class ClickHandler extends PacketListenerAbstract {
     // 玩家潜行状态追踪
     private final Map<UUID, Boolean> sneaking = new ConcurrentHashMap<>();
 
+    // 点击冷却
+    private final Map<UUID, Long> lastClickTime = new ConcurrentHashMap<>();
+    private long clickCooldownMs = 1000; // 默认 1 秒
+
     // Hologram 引用（用于 page 动作）
     private HologramManager hologramManager;
 
     public ClickHandler() {
         super(PacketListenerPriority.LOWEST);
+    }
+
+    /**
+     * 设置点击冷却时间（秒）。
+     */
+    public void setClickCooldown(double seconds) {
+        this.clickCooldownMs = (long) (seconds * 1000);
     }
 
     public void setHologramManager(HologramManager manager) {
@@ -109,6 +120,14 @@ public class ClickHandler extends PacketListenerAbstract {
 
             boolean isSneaking = sneaking.getOrDefault(playerId, false);
 
+            // 检查冷却时间
+            long now = System.currentTimeMillis();
+            Long lastClick = lastClickTime.get(playerId);
+            if (lastClick != null && (now - lastClick) < clickCooldownMs) {
+                return;
+            }
+            lastClickTime.put(playerId, now);
+
             ActionChain action = null;
             if (type == 0) {
                 // 右键
@@ -153,9 +172,10 @@ public class ClickHandler extends PacketListenerAbstract {
     }
 
     /**
-     * 玩家断开时清理潜行状态。
+     * 玩家断开时清理状态。
      */
     public void onPlayerDisconnect(UUID playerId) {
         sneaking.remove(playerId);
+        lastClickTime.remove(playerId);
     }
 }

@@ -24,7 +24,9 @@ public class AnimationParser {
     public static boolean hasAnimation(String text) {
         if (text == null) return false;
         return text.contains("{cycle:") || text.contains("{random:")
-                || text.contains("{typewriter:") || GradientParser.hasGradient(text);
+                || text.contains("{typewriter:") || text.contains("{wave:")
+                || text.contains("{burn:") || text.contains("{scroll:")
+                || text.contains("{colors:") || GradientParser.hasGradient(text);
     }
 
     /**
@@ -48,6 +50,26 @@ public class AnimationParser {
         // 解析 {typewriter:delay|text}
         if (text.startsWith("{typewriter:") && text.endsWith("}")) {
             return parseTypewriter(text);
+        }
+
+        // 解析 {wave:amplitude|speed|text}
+        if (text.startsWith("{wave:") && text.endsWith("}")) {
+            return parseWave(text);
+        }
+
+        // 解析 {burn:duration|text}
+        if (text.startsWith("{burn:") && text.endsWith("}")) {
+            return parseBurn(text);
+        }
+
+        // 解析 {scroll:width|speed|text}
+        if (text.startsWith("{scroll:") && text.endsWith("}")) {
+            return parseScroll(text);
+        }
+
+        // 解析 {colors:speed|text}
+        if (text.startsWith("{colors:") && text.endsWith("}")) {
+            return parseColors(text);
         }
 
         return null;
@@ -107,6 +129,64 @@ public class AnimationParser {
             frames.add(fullText);
 
             return new TextAnimation(TextAnimation.AnimationType.TYPEWRITER, frames, delay);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static TextAnimation parseWave(String text) {
+        String content = text.substring(6, text.length() - 1);
+        String[] parts = content.split("\\|", 3);
+        if (parts.length < 3) return null;
+
+        try {
+            int amplitude = Integer.parseInt(parts[0].trim());
+            int speed = Integer.parseInt(parts[1].trim());
+            String baseText = parts[2];
+            return new WaveAnimation(baseText, amplitude, speed);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static TextAnimation parseBurn(String text) {
+        String content = text.substring(6, text.length() - 1);
+        String[] parts = content.split("\\|", 2);
+        if (parts.length < 2) return null;
+
+        try {
+            int duration = Integer.parseInt(parts[0].trim());
+            String baseText = parts[1];
+            return new BurnAnimation(baseText, duration);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static TextAnimation parseScroll(String text) {
+        String content = text.substring(8, text.length() - 1);
+        String[] parts = content.split("\\|", 3);
+        if (parts.length < 3) return null;
+
+        try {
+            int width = Integer.parseInt(parts[0].trim());
+            int speed = Integer.parseInt(parts[1].trim());
+            String baseText = parts[2];
+            return new ScrollAnimation(baseText, width, speed);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static TextAnimation parseColors(String text) {
+        String content = text.substring(8, text.length() - 1);
+        String[] parts = content.split("\\|", 2);
+        if (parts.length < 2) return null;
+
+        try {
+            int speed = Integer.parseInt(parts[0].trim());
+            String baseText = parts[1];
+            return new ColorsAnimation(baseText, speed);
         } catch (NumberFormatException e) {
             return null;
         }

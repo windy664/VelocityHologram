@@ -70,6 +70,14 @@ public class TextAnimation {
         /** 打字机：逐字显示 */
         TYPEWRITER,
         /** 渐变：颜色渐变 */
-        GRADIENT
+        GRADIENT,
+        /** 波浪：正弦波颜色变化 */
+        WAVE,
+        /** 燃烧：逐行燃烧消失 */
+        BURN,
+        /** 滚动：文字在固定宽度内滚动 */
+        SCROLL,
+        /** 颜色循环：文字颜色循环变化 */
+        COLORS
     }
 }

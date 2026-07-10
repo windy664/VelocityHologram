@@ -125,10 +125,12 @@ public class VelocityHologramPlugin {
         displayRegistry.register(DisplayEntityType.ENTITY, new EntityFactory());
         displayRegistry.register(DisplayEntityType.HEAD, new HeadFactory(false));
         displayRegistry.register(DisplayEntityType.SMALLHEAD, new HeadFactory(true));
+        displayRegistry.register(DisplayEntityType.ICON, new IconFactory());
 
         // 初始化核心组件
         playerTracker = new PlayerTracker();
         clickHandler = new ClickHandler();
+        clickHandler.setClickCooldown(pluginConfig.getClickCooldown());
         placeholderManager = new PlaceholderManager(proxy);
         hologramManager = new HologramManager(playerTracker, clickHandler, placeholderManager, displayRegistry,
                 uuid -> proxy.getPlayer(uuid).orElse(null));
@@ -150,7 +152,7 @@ public class VelocityHologramPlugin {
                 .registerListener(clickHandler);
 
         // 注册命令
-        HologramCommand command = new HologramCommand(hologramManager, playerTracker, hologramLoader, clickHandler);
+        HologramCommand command = new HologramCommand(hologramManager, playerTracker, hologramLoader, clickHandler, proxy, dataDir);
         proxy.getCommandManager().register(
                 proxy.getCommandManager().metaBuilder("holo").build(),
                 command
