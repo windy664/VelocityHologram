@@ -105,10 +105,16 @@ public class VelocityHologramPlugin {
         // 初始化动作上下文
         ActionContext.init(proxy);
 
-        // 加载主配置 + 语言
+        // 加载主配置 + 语言 + 属性默认值
         pluginConfig = new PluginConfig(dataDir);
         pluginConfig.load();
         Lang.load(dataDir);
+
+        // 加载 Display 属性默认值
+        var attributeDefaults = new org.windy.hologram.config.AttributeDefaults(dataDir);
+        attributeDefaults.load();
+        org.windy.hologram.display.DisplayConfig.setAttributeDefaults(attributeDefaults);
+        logger.info("[VelocityHologram] 已加载 Display 属性默认值");
 
         // 初始化 RCON 连接池
         var rconServers = pluginConfig.getRconServers();

@@ -1,0 +1,312 @@
+# ============================================================
+# Display 实体默认属性配置
+# ============================================================
+#
+# 此文件定义每种 Display 类型的默认属性值。
+# 创建新的 Display 实体时，会自动应用这些默认值。
+#
+# 结构：
+#   display:
+#     DISPLAY_TYPE:
+#       attribute-name:
+#         enabled: true/false  # 是否使用此默认值
+#         value-type: "类型"   # 属性值类型
+#         value: ...           # 默认值
+#
+# 说明：
+#   - enabled: false 表示不设置该属性（使用 Minecraft 默认值）
+#   - 已存在的 Display 不受此文件影响
+#   - 重置属性时会恢复到此文件定义的默认值
+#
+# ============================================================
+
+display:
+  # ============================================================
+  # TEXT DISPLAY 默认值
+  # ============================================================
+  TEXT:
+    # Billboard 约束 - Display 如何面向玩家
+    # 选项：CENTER, VERTICAL, HORIZONTAL, FIXED
+    billboard:
+      enabled: true
+      value-type: "billboard_constraints"
+      value: "CENTER"
+
+    # 缩放 - Display 的大小（1 = 正常大小）
+    scale:
+      enabled: true
+      value-type: "vector3f"
+      value:
+        x: 1
+        y: 1
+        z: 1
+
+    # 平移 - 相对于基础位置的偏移
+    translation:
+      enabled: true
+      value-type: "vector3f"
+      value:
+        x: 0
+        y: 0
+        z: 0
+
+    # Yaw 旋转覆盖（水平旋转角度）
+    # 默认禁用
+    # 范围：-180 到 180
+    yaw:
+      enabled: false
+      value-type: "float"
+      value: 0
+
+    # Pitch 旋转覆盖（垂直旋转角度）
+    # 默认禁用
+    # 范围：-90 到 90
+    pitch:
+      enabled: false
+      value-type: "float"
+      value: 0
+
+    # 亮度覆盖（方块光和天空光均为 0-15）
+    # 默认禁用 - Display 使用自然光照
+    brightness:
+      enabled: false
+      value-type: "brightness"
+      value:
+        block-light: 15
+        sky-light: 15
+
+    # 阴影半径 - 阴影圆圈的大小（0 = 无阴影，32 = 最大阴影）
+    shadow-radius:
+      enabled: true
+      value-type: "float"
+      value: 0
+
+    # 阴影强度 - 阴影圆圈的不透明度（1 = 正常实体阴影，>7 = 全黑阴影）
+    shadow-strength:
+      enabled: true
+      value-type: "float"
+      value: 1
+
+    # 文本对齐 - 文本如何对齐
+    # 选项：LEFT, CENTER, RIGHT
+    alignment:
+      enabled: true
+      value-type: "text_alignment"
+      value: "CENTER"
+
+    # 背景颜色 - 文本背后的颜色（RGBA）
+    # 默认：黑色，25% 不透明度（64/255）
+    background-color:
+      enabled: true
+      value-type: "rgba"
+      value:
+        red: 0
+        green: 0
+        blue: 0
+        alpha: 64
+
+    # 行宽 - 文本换行前的最大宽度（像素）
+    line-width:
+      enabled: true
+      value-type: "integer"
+      value: 200
+
+    # 文本不透明度 - 文本的透明度（0-255）
+    # 255 = 完全不透明，0 = 完全透明
+    text-opacity:
+      enabled: true
+      value-type: "integer"
+      value: 255
+
+    # 穿透 - 文本是否可以通过方块看到
+    see-through:
+      enabled: true
+      value-type: "boolean"
+      value: false
+
+    # 文本阴影 - 文本是否有阴影效果
+    text-shadow:
+      enabled: true
+      value-type: "boolean"
+      value: false
+
+    # 默认文本 - 空行显示的文本
+    default-text:
+      enabled: true
+      value-type: "string"
+      value: ""
+
+  # ============================================================
+  # ITEM DISPLAY 默认值
+  # ============================================================
+  ITEM:
+    # Billboard 约束
+    billboard:
+      enabled: true
+      value-type: "billboard_constraints"
+      value: "FIXED"
+
+    # 缩放
+    scale:
+      enabled: true
+      value-type: "vector3f"
+      value:
+        x: 1
+        y: 1
+        z: 1
+
+    # 平移
+    translation:
+      enabled: true
+      value-type: "vector3f"
+      value:
+        x: 0
+        y: 0
+        z: 0
+
+    # Yaw 旋转
+    yaw:
+      enabled: false
+      value-type: "float"
+      value: 0
+
+    # Pitch 旋转
+    pitch:
+      enabled: false
+      value-type: "float"
+      value: 0
+
+    # 亮度
+    brightness:
+      enabled: false
+      value-type: "brightness"
+      value:
+        block-light: 15
+        sky-light: 15
+
+    # 阴影半径
+    shadow-radius:
+      enabled: true
+      value-type: "float"
+      value: 0
+
+    # 阴影强度
+    shadow-strength:
+      enabled: true
+      value-type: "float"
+      value: 1
+
+    # 发光颜色
+    # 默认禁用
+    glow-color:
+      enabled: false
+      value-type: "rgba"
+      value:
+        red: 255
+        green: 128
+        blue: 255
+        alpha: 255
+
+    # 显示类型 - 物品如何渲染
+    # 选项：NONE, THIRD_PERSON_LEFT_HAND, THIRD_PERSON_RIGHT_HAND,
+    #        FIRST_PERSON_LEFT_HAND, FIRST_PERSON_RIGHT_HAND,
+    #        HEAD, GUI, GROUND, FIXED
+    display-type:
+      enabled: true
+      value-type: "item_display_type"
+      value: "NONE"
+
+    # 附魔光效 - 物品是否有附魔闪光
+    enchanted:
+      enabled: true
+      value-type: "boolean"
+      value: false
+
+    # 皮革颜色 - 皮革盔甲的颜色
+    # 默认禁用
+    leather-color:
+      enabled: false
+      value-type: "rgba"
+      value:
+        red: 255
+        green: 128
+        blue: 255
+        alpha: 255
+
+    # 头颅纹理 - 玩家头颅的纹理
+    # 默认禁用
+    # 支持：玩家名、Base64 纹理、占位符
+    skull-texture:
+      enabled: false
+      value-type: "string"
+      value: ""
+
+  # ============================================================
+  # BLOCK DISPLAY 默认值
+  # ============================================================
+  BLOCK:
+    # Billboard 约束
+    billboard:
+      enabled: true
+      value-type: "billboard_constraints"
+      value: "FIXED"
+
+    # 缩放
+    scale:
+      enabled: true
+      value-type: "vector3f"
+      value:
+        x: 1
+        y: 1
+        z: 1
+
+    # 平移
+    translation:
+      enabled: true
+      value-type: "vector3f"
+      value:
+        x: 0
+        y: 0
+        z: 0
+
+    # Yaw 旋转
+    yaw:
+      enabled: false
+      value-type: "float"
+      value: 0
+
+    # Pitch 旋转
+    pitch:
+      enabled: false
+      value-type: "float"
+      value: 0
+
+    # 亮度
+    brightness:
+      enabled: false
+      value-type: "brightness"
+      value:
+        block-light: 15
+        sky-light: 15
+
+    # 阴影半径
+    shadow-radius:
+      enabled: true
+      value-type: "float"
+      value: 0
+
+    # 阴影强度
+    shadow-strength:
+      enabled: true
+      value-type: "float"
+      value: 1
+
+    # 发光颜色
+    glow-color:
+      enabled: false
+      value-type: "rgba"
+      value:
+        red: 255
+        green: 128
+        blue: 255
+        alpha: 255

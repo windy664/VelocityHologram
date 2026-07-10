@@ -57,8 +57,26 @@ public class DisplayConfig {
     public float[] rightRotation() { return rightRotation; }
     public float[] translation() { return translation; }
 
-    /** 默认 Text Display 配置。 */
-    public static final DisplayConfig DEFAULT_TEXT = new DisplayConfig(
+    // ===== 属性默认值配置 =====
+
+    private static org.windy.hologram.config.AttributeDefaults attributeDefaults;
+
+    /**
+     * 设置属性默认值配置。
+     */
+    public static void setAttributeDefaults(org.windy.hologram.config.AttributeDefaults defaults) {
+        attributeDefaults = defaults;
+    }
+
+    /**
+     * 获取属性默认值配置。
+     */
+    public static org.windy.hologram.config.AttributeDefaults getAttributeDefaults() {
+        return attributeDefaults;
+    }
+
+    /** 默认 Text Display 配置（从配置文件加载，否则使用硬编码默认值）。 */
+    public static DisplayConfig DEFAULT_TEXT = new DisplayConfig(
             DisplayEntityType.TEXT_DISPLAY,
             "", null, null,
             Billboard.CENTER,
@@ -68,8 +86,8 @@ public class DisplayConfig {
             null, null, null
     );
 
-    /** 默认 Item Display 配置。 */
-    public static final DisplayConfig DEFAULT_ITEM = new DisplayConfig(
+    /** 默认 Item Display 配置（从配置文件加载，否则使用硬编码默认值）。 */
+    public static DisplayConfig DEFAULT_ITEM = new DisplayConfig(
             DisplayEntityType.ITEM_DISPLAY,
             null, "minecraft:stone", null,
             Billboard.CENTER,
@@ -78,8 +96,8 @@ public class DisplayConfig {
             null, null, null
     );
 
-    /** 默认 Block Display 配置。 */
-    public static final DisplayConfig DEFAULT_BLOCK = new DisplayConfig(
+    /** 默认 Block Display 配置（从配置文件加载，否则使用硬编码默认值）。 */
+    public static DisplayConfig DEFAULT_BLOCK = new DisplayConfig(
             DisplayEntityType.BLOCK_DISPLAY,
             null, null, "minecraft:stone",
             Billboard.CENTER,
@@ -87,6 +105,21 @@ public class DisplayConfig {
             0, (byte) 0, (byte) 0, 0,
             null, null, null
     );
+
+    /**
+     * 获取默认配置（配置文件优先）。
+     */
+    public static DisplayConfig getDefault(DisplayEntityType type) {
+        if (attributeDefaults != null) {
+            return attributeDefaults.getDefault(type);
+        }
+        switch (type) {
+            case TEXT_DISPLAY: return DEFAULT_TEXT;
+            case ITEM_DISPLAY: return DEFAULT_ITEM;
+            case BLOCK_DISPLAY: return DEFAULT_BLOCK;
+            default: return DEFAULT_TEXT;
+        }
+    }
 
     /**
      * 朝向模式。
