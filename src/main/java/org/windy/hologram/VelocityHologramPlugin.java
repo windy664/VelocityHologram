@@ -129,15 +129,17 @@ public class VelocityHologramPlugin {
             logger.info("[VelocityHologram] RCON 已配置 " + rconServers.size() + " 个服务器");
         }
 
-        // 初始化 Display 工厂注册表
+        // 初始化 Display 工厂注册表（版本感知，自动支持 1.8 - 1.21+）
         displayRegistry = new DisplayFactoryRegistry();
-        displayRegistry.register(DisplayEntityType.TEXT_DISPLAY, new TextDisplayFactory());
-        displayRegistry.register(DisplayEntityType.ITEM_DISPLAY, new ItemDisplayFactory());
-        displayRegistry.register(DisplayEntityType.BLOCK_DISPLAY, new BlockDisplayFactory());
-        displayRegistry.register(DisplayEntityType.ENTITY, new EntityFactory());
-        displayRegistry.register(DisplayEntityType.HEAD, new HeadFactory(false));
-        displayRegistry.register(DisplayEntityType.SMALLHEAD, new HeadFactory(true));
-        displayRegistry.register(DisplayEntityType.ICON, new IconFactory());
+        VersionAwareFactory versionAwareFactory = new VersionAwareFactory();
+        displayRegistry.register(DisplayEntityType.TEXT_DISPLAY, versionAwareFactory);
+        displayRegistry.register(DisplayEntityType.ITEM_DISPLAY, versionAwareFactory);
+        displayRegistry.register(DisplayEntityType.BLOCK_DISPLAY, versionAwareFactory);
+        displayRegistry.register(DisplayEntityType.ENTITY, versionAwareFactory);
+        displayRegistry.register(DisplayEntityType.HEAD, versionAwareFactory);
+        displayRegistry.register(DisplayEntityType.SMALLHEAD, versionAwareFactory);
+        displayRegistry.register(DisplayEntityType.ICON, versionAwareFactory);
+        org.windy.hologram.utils.BannerUtils.printModule(logger, "多版本支持 (1.8 - 1.21+)", true);
 
         // 初始化核心组件
         playerTracker = new PlayerTracker();
