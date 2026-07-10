@@ -151,6 +151,23 @@ public class VelocityHologramPlugin {
         peAPI.getEventManager()
                 .registerListener(clickHandler);
 
+        // 初始化伤害/治疗显示功能
+        if (pluginConfig.isDamageDisplayEnabled()) {
+            var damageDisplay = new org.windy.hologram.feature.DamageDisplayFeature(hologramManager, playerTracker);
+            damageDisplay.setDuration(pluginConfig.getDamageDisplayDuration());
+            damageDisplay.setAppearance(pluginConfig.getDamageDisplayAppearance());
+            damageDisplay.setCriticalAppearance(pluginConfig.getDamageDisplayCriticalAppearance());
+            peAPI.getEventManager().registerListener(damageDisplay);
+            logger.info("[VelocityHologram] 伤害显示已启用");
+        }
+        if (pluginConfig.isHealingDisplayEnabled()) {
+            var healingDisplay = new org.windy.hologram.feature.HealingDisplayFeature(hologramManager, playerTracker);
+            healingDisplay.setDuration(pluginConfig.getHealingDisplayDuration());
+            healingDisplay.setAppearance(pluginConfig.getHealingDisplayAppearance());
+            peAPI.getEventManager().registerListener(healingDisplay);
+            logger.info("[VelocityHologram] 治疗显示已启用");
+        }
+
         // 注册命令
         HologramCommand command = new HologramCommand(hologramManager, playerTracker, hologramLoader, clickHandler, proxy, dataDir);
         proxy.getCommandManager().register(

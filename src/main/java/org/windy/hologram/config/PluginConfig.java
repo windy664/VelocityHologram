@@ -121,6 +121,89 @@ public class PluginConfig {
         return Collections.emptyMap();
     }
 
+    // ===== 伤害显示配置 =====
+
+    public boolean isDamageDisplayEnabled() {
+        return getBoolean("damage-display.enabled", false);
+    }
+
+    public int getDamageDisplayDuration() {
+        return getInt("damage-display.duration", 40);
+    }
+
+    public String getDamageDisplayAppearance() {
+        return getString("damage-display.appearance", "§c-{damage}❤");
+    }
+
+    public String getDamageDisplayCriticalAppearance() {
+        return getString("damage-display.critical-appearance", "§4§l暴击！ §c-{damage}❤");
+    }
+
+    // ===== 治疗显示配置 =====
+
+    public boolean isHealingDisplayEnabled() {
+        return getBoolean("healing-display.enabled", false);
+    }
+
+    public int getHealingDisplayDuration() {
+        return getInt("healing-display.duration", 40);
+    }
+
+    public String getHealingDisplayAppearance() {
+        return getString("healing-display.appearance", "§a+{healing}❤");
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean getBoolean(String path, boolean def) {
+        String[] parts = path.split("\\.");
+        Map<String, Object> current = root;
+        for (int i = 0; i < parts.length - 1; i++) {
+            Object next = current.get(parts[i]);
+            if (next instanceof Map) {
+                current = (Map<String, Object>) next;
+            } else {
+                return def;
+            }
+        }
+        Object val = current.get(parts[parts.length - 1]);
+        if (val instanceof Boolean) return (Boolean) val;
+        return def;
+    }
+
+    @SuppressWarnings("unchecked")
+    private int getInt(String path, int def) {
+        String[] parts = path.split("\\.");
+        Map<String, Object> current = root;
+        for (int i = 0; i < parts.length - 1; i++) {
+            Object next = current.get(parts[i]);
+            if (next instanceof Map) {
+                current = (Map<String, Object>) next;
+            } else {
+                return def;
+            }
+        }
+        Object val = current.get(parts[parts.length - 1]);
+        if (val instanceof Number) return ((Number) val).intValue();
+        return def;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String getString(String path, String def) {
+        String[] parts = path.split("\\.");
+        Map<String, Object> current = root;
+        for (int i = 0; i < parts.length - 1; i++) {
+            Object next = current.get(parts[i]);
+            if (next instanceof Map) {
+                current = (Map<String, Object>) next;
+            } else {
+                return def;
+            }
+        }
+        Object val = current.get(parts[parts.length - 1]);
+        if (val instanceof String) return (String) val;
+        return def;
+    }
+
     @SuppressWarnings("unchecked")
     private double getDefaultsDouble(String key, double def) {
         Object defaults = root.get("defaults");
