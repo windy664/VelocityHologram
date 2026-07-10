@@ -6,7 +6,6 @@ import com.github.retrooper.packetevents.event.PacketSendEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerJoinGame;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerRespawn;
-import org.windy.hologram.hologram.DisableCause;
 import org.windy.hologram.hologram.Hologram;
 import org.windy.hologram.hologram.HologramManager;
 

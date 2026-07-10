@@ -84,6 +84,54 @@ public class PluginConfig {
         return result;
     }
 
+    // ===== 更新检查器 =====
+
+    public boolean isCheckForUpdates() {
+        return getBoolean("update-checker", true);
+    }
+
+    // ===== 默认设置 =====
+
+    public String getDefaultText() {
+        return getString("defaults.text", "");
+    }
+
+    public boolean isDefaultDownOrigin() {
+        return getBoolean("defaults.down-origin", false);
+    }
+
+    public double getDefaultHeightText() {
+        return getDouble("defaults.height.text", 0.3);
+    }
+
+    public double getDefaultHeightIcon() {
+        return getDouble("defaults.height.icon", 0.6);
+    }
+
+    public double getDefaultHeightHead() {
+        return getDouble("defaults.height.head", 0.75);
+    }
+
+    public double getDefaultHeightSmallHead() {
+        return getDouble("defaults.height.smallhead", 0.6);
+    }
+
+    public int getDefaultDisplayRange() {
+        return getInt("defaults.display-range", 48);
+    }
+
+    public int getDefaultUpdateRange() {
+        return getInt("defaults.update-range", 48);
+    }
+
+    public int getDefaultUpdateInterval() {
+        return getInt("defaults.update-interval", 20);
+    }
+
+    public int getDefaultLruCacheSize() {
+        return getInt("defaults.lru-cache-size", 500);
+    }
+
     public double getDefaultViewDistance() {
         return getDefaultsDouble("view-distance", 48.0);
     }
@@ -101,22 +149,38 @@ public class PluginConfig {
     }
 
     public boolean isEyeLevelPositioning() {
-        Object defaults = root.get("defaults");
-        if (defaults instanceof Map) {
-            Object val = ((Map<String, Object>) defaults).get("eye-level-positioning");
-            if (val instanceof Boolean) return (Boolean) val;
-        }
-        return false;
+        return getBoolean("defaults.eye-level-positioning", false);
     }
+
+    public boolean isDisplaysEyeLevelPositioning() {
+        return getBoolean("defaults.displays-eye-level-positioning", false);
+    }
+
+    // ===== 动画设置 =====
+
+    public boolean isAllowPlaceholdersInsideAnimations() {
+        return getBoolean("allow-placeholders-inside-animations", false);
+    }
+
+    // ===== 可见性设置 =====
+
+    public boolean isUpdateVisibilityOnTeleport() {
+        return getBoolean("update-visibility-on-teleport", false);
+    }
+
+    // ===== 皮肤设置 =====
+
+    public int getPlayerSkinConnectionTimeout() {
+        return getInt("player-skin-connection-timeout", 5);
+    }
+
+    // ===== 自定义替换字符 =====
 
     @SuppressWarnings("unchecked")
     public Map<String, String> getCustomReplacements() {
-        Object defaults = root.get("defaults");
-        if (defaults instanceof Map) {
-            Object val = ((Map<String, Object>) defaults).get("custom-replacements");
-            if (val instanceof Map) {
-                return (Map<String, String>) val;
-            }
+        Object replacements = root.get("custom-replacements");
+        if (replacements instanceof Map) {
+            return (Map<String, String>) replacements;
         }
         return Collections.emptyMap();
     }
@@ -188,6 +252,23 @@ public class PluginConfig {
     }
 
     @SuppressWarnings("unchecked")
+    private double getDouble(String path, double def) {
+        String[] parts = path.split("\\.");
+        Map<String, Object> current = root;
+        for (int i = 0; i < parts.length - 1; i++) {
+            Object next = current.get(parts[i]);
+            if (next instanceof Map) {
+                current = (Map<String, Object>) next;
+            } else {
+                return def;
+            }
+        }
+        Object val = current.get(parts[parts.length - 1]);
+        if (val instanceof Number) return ((Number) val).doubleValue();
+        return def;
+    }
+
+    @SuppressWarnings("unchecked")
     private String getString(String path, String def) {
         String[] parts = path.split("\\.");
         Map<String, Object> current = root;
@@ -234,19 +315,110 @@ public class PluginConfig {
             Files.createDirectories(dataDir);
             List<String> lines = List.of(
                     "# VelocityHologram 主配置",
+                    "# 对标 DecentHolograms 配置格式",
                     "",
+                    "# =========================================",
+                    "# 更新检查器",
+                    "# =========================================",
+                    "update-checker: true",
+                    "",
+                    "# =========================================",
                     "# RCON 服务器配置（用于 rcon: 动作和 /holo tp）",
+                    "# =========================================",
                     "rcon:",
-                    "  shelter:",
+                    "  lobby:",
                     "    host: 127.0.0.1",
-                    "    port: 35565",
-                    "    password: \"12345678\"",
+                    "    port: 25575",
+                    "    password: \"\"",
                     "",
+                    "# =========================================",
                     "# 默认设置",
+                    "# =========================================",
                     "defaults:",
-                    "  view-distance: 48",
+                    "  # 默认文本（空行显示的文本）",
+                    "  text: \"\"",
+                    "",
+                    "  # 向下生长原点（行从下往上排列）",
+                    "  down-origin: false",
+                    "",
+                    "  # 行高设置",
+                    "  height:",
+                    "    text: 0.3",
+                    "    icon: 0.6",
+                    "    head: 0.75",
+                    "    smallhead: 0.6",
+                    "",
+                    "  # 显示范围（玩家进入此范围才显示）",
+                    "  display-range: 48",
+                    "",
+                    "  # 更新范围（玩家在此范围内才接收更新）",
+                    "  update-range: 48",
+                    "",
+                    "  # 更新间隔（tick，1秒=20tick）",
+                    "  update-interval: 20",
+                    "",
+                    "  # 点击冷却（秒）",
+                    "  click-cooldown: 1",
+                    "",
+                    "  # LRU 缓存大小",
+                    "  lru-cache-size: 500",
+                    "",
+                    "  # 眼级定位（悬浮字在玩家眼高还是脚高）",
+                    "  eye-level-positioning: false",
+                    "  displays-eye-level-positioning: false",
+                    "",
+                    "  # 背景颜色",
+                    "  background-color: 0x40000000",
+                    "",
+                    "  # 行间距",
                     "  line-spacing: 0.3",
-                    "  background-color: 0x40000000"
+                    "",
+                    "# =========================================",
+                    "# 动画设置",
+                    "# =========================================",
+                    "allow-placeholders-inside-animations: false",
+                    "",
+                    "# =========================================",
+                    "# 可见性设置",
+                    "# =========================================",
+                    "# 传送/重生时更新可见性（可能导致视觉闪烁）",
+                    "update-visibility-on-teleport: false",
+                    "",
+                    "# =========================================",
+                    "# 自定义替换字符",
+                    "# =========================================",
+                    "custom-replacements:",
+                    "  \"[x]\": \"█\"",
+                    "  \"[X]\": \"█\"",
+                    "  \"[/]\": \"▌\"",
+                    "  \"[,]\": \"░\"",
+                    "  \"[,,]\": \"▒\"",
+                    "  \"[,,,]\": \"▓\"",
+                    "  \"[p]\": \"•\"",
+                    "  \"[P]\": \"•\"",
+                    "  \"[|]\": \"⎟\"",
+                    "",
+                    "# =========================================",
+                    "# 皮肤设置",
+                    "# =========================================",
+                    "player-skin-connection-timeout: 5",
+                    "",
+                    "# =========================================",
+                    "# 伤害显示",
+                    "# =========================================",
+                    "damage-display:",
+                    "  enabled: false",
+                    "  duration: 40",
+                    "  appearance: \"§c-{damage}❤\"",
+                    "  critical-appearance: \"§4§l暴击！ §c-{damage}❤\"",
+                    "",
+                    "# =========================================",
+                    "# 治疗显示",
+                    "# =========================================",
+                    "healing-display:",
+                    "  enabled: false",
+                    "  duration: 40",
+                    "  appearance: \"§a+{healing}❤\""
             );
             Files.write(file.toPath(), lines);
         } catch (IOException e) {
