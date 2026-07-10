@@ -49,6 +49,10 @@ VelocityHologram/
 - Velocity 3.3.0+
 - packetevents 2.13.0（内置）
 
+## 下载
+
+从 [GitHub Releases](https://github.com/windy664/VelocityHologram/releases) 下载最新版本。
+
 ## 构建
 
 ```bash
