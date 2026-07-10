@@ -86,6 +86,7 @@ public class HologramLoader {
         double updateDistance = 48;
         double lineSpacing = 0.3;
         int updateInterval = 20;
+        float facingYaw = 0, facingPitch = 0;
         String dimension = "minecraft:overworld";
         String server = "";
         String permission = null;
@@ -210,6 +211,8 @@ public class HologramLoader {
                 else if (line.startsWith("update-distance:")) updateDistance = parseDouble(line, 48);
                 else if (line.startsWith("line-spacing:")) lineSpacing = parseDouble(line, 0.3);
                 else if (line.startsWith("update-interval:")) updateInterval = (int) parseDouble(line, 20);
+                else if (line.startsWith("facing-yaw:")) facingYaw = (float) parseDouble(line, 0);
+                else if (line.startsWith("facing-pitch:")) facingPitch = (float) parseDouble(line, 0);
                 else if (line.startsWith("permission:")) permission = line.substring(11).trim().replace("\"", "");
             }
         }
@@ -233,6 +236,9 @@ public class HologramLoader {
         hologram.setUpdateDistance(updateDistance);
         hologram.setLineSpacing(lineSpacing);
         hologram.setUpdateInterval(updateInterval);
+        if (facingYaw != 0 || facingPitch != 0) {
+            hologram.setFacing(facingYaw, facingPitch);
+        }
         if (permission != null && !permission.isEmpty()) {
             hologram.setPermission(permission);
         }
@@ -387,6 +393,10 @@ public class HologramLoader {
         out.add("update-distance: " + hologram.getUpdateDistance());
         out.add("line-spacing: " + hologram.getLineSpacing());
         out.add("update-interval: " + hologram.getUpdateInterval());
+        if (hologram.getFacingYaw() != 0 || hologram.getFacingPitch() != 0) {
+            out.add("facing-yaw: " + hologram.getFacingYaw());
+            out.add("facing-pitch: " + hologram.getFacingPitch());
+        }
         if (hologram.getPermission() != null) {
             out.add("permission: \"" + hologram.getPermission() + "\"");
         }

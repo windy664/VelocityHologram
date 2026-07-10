@@ -1143,14 +1143,30 @@ public class HologramCommand implements SimpleCommand {
     }
 
     private void handleSetFacing(CommandSource source, String[] args) {
+        if (!(source instanceof Player)) {
+            msg(source, Lang.get("player_only"));
+            return;
+        }
         if (args.length < 2) {
             msg(source, "§c用法: /holo setfacing <名称>");
             return;
         }
         Hologram hologram = getHologramOrWarn(source, args[1]);
         if (hologram == null) return;
-        // Velocity Player 没有 getYaw/getPitch，暂不实现
-        msg(source, "§e朝向功能暂未实现（需要子服支持）");
+
+        Player player = (Player) source;
+        PlayerState state = playerTracker.get(player.getUniqueId());
+        if (state == null) {
+            msg(source, "§c无法获取你的朝向信息");
+            return;
+        }
+
+        hologram.setFacing(state.getYaw(), state.getPitch());
+        hologram.refresh();
+        hologramLoader.save(hologram);
+        msg(source, "§a已设置悬浮字 '" + args[1] + "' 的朝向 (yaw=" +
+            String.format("%.1f", state.getYaw()) + ", pitch=" +
+            String.format("%.1f", state.getPitch()) + ")");
     }
 
     private void handleInsertPage(CommandSource source, String[] args) {

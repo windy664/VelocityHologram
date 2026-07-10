@@ -51,6 +51,10 @@ public class Hologram implements IHologram {
     private int editPageIndex = 0;
     private java.util.Set<String> flags = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
+    // 朝向
+    private float facingYaw = 0;
+    private float facingPitch = 0;
+
     public Hologram(String name, HologramPos position, ClickHandler clickHandler,
                     PlaceholderManager placeholderManager, DisplayFactoryRegistry displayRegistry,
                     Function<UUID, Object> playerResolver) {
@@ -81,17 +85,19 @@ public class Hologram implements IHologram {
         this.position = new HologramPos(x, y, z, position.dimension(), position.server());
     }
 
-    /**
-     * 设置悬浮字朝向。
-     */
-    public void setFacing(float yaw, float pitch) {
-        // 朝向暂不持久化，仅用于对齐计算
-    }
-
     // ===== 启用/禁用 =====
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+    // ===== 朝向 =====
+
+    public float getFacingYaw() { return facingYaw; }
+    public float getFacingPitch() { return facingPitch; }
+    public void setFacing(float yaw, float pitch) {
+        this.facingYaw = yaw;
+        this.facingPitch = pitch;
+    }
 
     public double getViewDistance() { return viewDistance; }
     public void setViewDistance(double viewDistance) { this.viewDistance = viewDistance; }

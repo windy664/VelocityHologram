@@ -64,20 +64,48 @@ public class HologramPacketListener extends PacketListenerAbstract {
 
     private boolean isMovement(PacketTypeCommon type) {
         return type == PacketType.Play.Client.PLAYER_POSITION
-                || type == PacketType.Play.Client.PLAYER_POSITION_AND_ROTATION;
+                || type == PacketType.Play.Client.PLAYER_POSITION_AND_ROTATION
+                || type == PacketType.Play.Client.PLAYER_ROTATION;
     }
 
     /**
-     * 从移动包中提取坐标。
+     * 从移动包中提取坐标和朝向。
      */
     private void handleMovement(PacketReceiveEvent event, User user, String name) {
         try {
             Object buf = event.getByteBuf();
             com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.markReaderIndex(buf);
 
-            double x = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readDouble(buf);
-            double y = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readDouble(buf);
-            double z = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readDouble(buf);
+            PacketTypeCommon type = event.getPacketType();
+            double x, y, z;
+            float yaw = 0, pitch = 0;
+
+            if (type == PacketType.Play.Client.PLAYER_POSITION) {
+                // 位置包: x, y, z, onGround
+                x = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readDouble(buf);
+                y = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readDouble(buf);
+                z = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readDouble(buf);
+            } else if (type == PacketType.Play.Client.PLAYER_ROTATION) {
+                // 朝向包: yaw, pitch, onGround
+                yaw = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readFloat(buf);
+                pitch = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readFloat(buf);
+                com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.resetReaderIndex(buf);
+                // 朝向包不包含位置，只更新朝向
+                UUID playerId = user.getUUID();
+                if (playerId != null) {
+                    PlayerState state = playerTracker.getOrCreate(playerId);
+                    state.setName(name);
+                    state.setRotation(yaw, pitch);
+                }
+                return;
+            } else {
+                // 位置+朝向包: x, y, z, yaw, pitch, onGround
+                x = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readDouble(buf);
+                y = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readDouble(buf);
+                z = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readDouble(buf);
+                yaw = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readFloat(buf);
+                pitch = com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.readFloat(buf);
+            }
 
             com.github.retrooper.packetevents.netty.buffer.ByteBufHelper.resetReaderIndex(buf);
 
@@ -86,6 +114,9 @@ public class HologramPacketListener extends PacketListenerAbstract {
                 PlayerState state = playerTracker.getOrCreate(playerId);
                 state.setName(name);
                 state.setPosition(x, y, z);
+                if (type == PacketType.Play.Client.PLAYER_POSITION_AND_ROTATION) {
+                    state.setRotation(yaw, pitch);
+                }
             }
         } catch (Exception ignored) {
         }

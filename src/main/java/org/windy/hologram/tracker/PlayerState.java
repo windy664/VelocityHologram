@@ -8,6 +8,7 @@ public class PlayerState {
 
     private volatile String name = "";
     private volatile double x, y, z;
+    private volatile float yaw, pitch;
     private volatile String dimension = "minecraft:overworld";
     private volatile String server = "";
 
@@ -18,6 +19,11 @@ public class PlayerState {
         this.x = x;
         this.y = y;
         this.z = z;
+    }
+
+    public void setRotation(float yaw, float pitch) {
+        this.yaw = yaw;
+        this.pitch = pitch;
     }
 
     public void setDimension(String dimension) {
@@ -31,6 +37,8 @@ public class PlayerState {
     public double getX() { return x; }
     public double getY() { return y; }
     public double getZ() { return z; }
+    public float getYaw() { return yaw; }
+    public float getPitch() { return pitch; }
     public String getDimension() { return dimension; }
     public String getServer() { return server; }
 }
