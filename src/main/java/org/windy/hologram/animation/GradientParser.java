@@ -23,7 +23,8 @@ public class GradientParser {
      * 检查文本是否包含渐变语法。
      */
     public static boolean hasGradient(String text) {
-        return text != null && (text.contains("{gradient:") || text.contains("{gradient-anim:"));
+        return text != null && (text.contains("{gradient:") || text.contains("{gradient-anim:")
+                || text.contains("&u") || text.contains("§u"));
     }
 
     /**
@@ -34,6 +35,13 @@ public class GradientParser {
      */
     public static String applyGradient(String text) {
         if (text == null || text.isEmpty()) return text;
+
+        // 处理 &u 或 §u（彩虹动画，等同于 <#ANIM:colors>）
+        if (text.contains("&u") || text.contains("§u")) {
+            text = text.replace("&u", "").replace("§u", "");
+            int[] rainbow = {0xFF0000, 0xFF7F00, 0xFFFF00, 0x00FF00, 0x0000FF, 0x4B0082, 0x9400D3};
+            return buildGradient(text, rainbow, 0);
+        }
 
         // 处理 {gradient:color1:color2|文本}
         int start = text.indexOf("{gradient:");

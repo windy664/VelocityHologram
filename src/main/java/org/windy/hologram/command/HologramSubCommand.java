@@ -65,6 +65,9 @@ public class HologramSubCommand {
         Hologram hologram = hologramManager.createHologram(name, state.getX(), state.getY(), state.getZ(),
                 state.getDimension(), server);
 
+        // 设置朝向为玩家当前朝向
+        hologram.setFacing(state.getYaw(), state.getPitch());
+
         if (args.length >= 3) {
             String text = joinArgs(args, 2);
             hologram.addLine(text);
@@ -73,7 +76,7 @@ public class HologramSubCommand {
 
         if (posReady) {
             hologram.showTo(player.getUniqueId());
-            msg(source, "§a已创建悬浮字 '" + name + "' 在你的位置");
+            msg(source, "§a已创建悬浮字 '" + name + "' 在你的位置（朝向: " + String.format("%.1f", state.getYaw()) + "°）");
         } else {
             msg(source, "§a已创建悬浮字 '" + name + "'，移动一下即可看到");
         }
