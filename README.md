@@ -1,17 +1,27 @@
 # VelocityHologram
 
+[![Build](https://github.com/windy664/VelocityHologram/actions/workflows/gradle.yml/badge.svg)](https://github.com/windy664/VelocityHologram/actions)
+[![License](https://img.shields.io/github/license/windy664/VelocityHologram)](LICENSE)
+[![Version](https://img.shields.io/github/v/release/windy664/VelocityHologram)](https://github.com/windy664/VelocityHologram/releases)
+[![Java](https://img.shields.io/badge/Java-17%2B-blue)](https://adoptium.net/)
+[![Velocity](https://img.shields.io/badge/Velocity-3.3.0%2B-blue)](https://velocitypowered.com/)
+
 纯代理端悬浮字系统，基于 Velocity + packetevents 实现。
 
 ## 特性
 
 - **零子服依赖**：完全在代理端运行，无需子服安装任何插件
-- **多实体类型**：Text Display / Item Display / Block Display（1.19.4+）
+- **多实体类型**：Text Display / Item Display / Block Display / Entity（1.19.4+）
 - **packetevents 驱动**：直接构造实体包，跨版本兼容
+- **多页系统**：支持悬浮字多页内容，玩家可独立翻页
+- **扩展点击动作**：支持 4 种点击类型 + 动作链 + 7 种动作类型
 - **实时追踪**：通过拦截移动包实时更新玩家坐标
-- **视觉效果**：Billboard / 缩放 / 透明度 / 背景 / 渐变色
-- **权限控制**：命令权限 + 悬浮字可见性权限
+- **视觉效果**：Billboard / 缩放 / 透明度 / 背景 / 渐变色 / 动画
+- **权限控制**：命令权限 + 悬浮字可见性权限 + Flag 系统
 - **空间分区**：优化的可见性计算，支持大量悬浮字
 - **异步更新**：不阻塞 Netty 线程
+- **Java API + 事件**：完整的公共 API 和事件系统
+- **多语言支持**：可自定义所有提示消息
 
 ## 架构
 
