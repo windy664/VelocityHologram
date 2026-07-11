@@ -16,10 +16,14 @@ public class WaveAnimation extends TextAnimation {
     private int tick;
 
     public WaveAnimation(String baseText, int amplitude, int speed) {
-        super(AnimationType.WAVE, generateFrames(baseText, amplitude, speed), speed);
-        this.baseText = baseText;
-        this.amplitude = amplitude;
-        this.speed = speed;
+        super(
+                AnimationType.WAVE,
+                generateFrames(baseText, normalizeAmplitude(amplitude), normalizeSpeed(speed)),
+                normalizeSpeed(speed)
+        );
+        this.baseText = baseText != null ? baseText : "";
+        this.amplitude = normalizeAmplitude(amplitude);
+        this.speed = normalizeSpeed(speed);
         this.tick = 0;
     }
 
@@ -31,48 +35,53 @@ public class WaveAnimation extends TextAnimation {
 
     @Override
     public String getCurrentFrame() {
-        if (baseText == null || baseText.isEmpty()) return "";
+        if (baseText.isEmpty()) return "";
         return generateWaveText(baseText, amplitude, tick);
     }
 
-    /**
-     * 生成波浪文本。
-     * <p>使用颜色代码模拟高度变化。
-     */
     private static String generateWaveText(String text, int amplitude, int tick) {
-        StringBuilder sb = new StringBuilder();
-        String[] colors = {"§f", "§e", "§6", "§c", "§4", "§5", "§d", "§b", "§3", "§1", "§9", "§a", "§2"};
+        if (text == null || text.isEmpty()) return "";
 
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c == '§') {
-                // 跳过颜色代码
-                sb.append(c);
-                if (i + 1 < text.length()) {
-                    sb.append(text.charAt(i + 1));
-                    i++;
+        StringBuilder result = new StringBuilder();
+        String[] colors = {
+                "§f", "§e", "§6", "§c", "§4", "§5", "§d",
+                "§b", "§3", "§1", "§9", "§a", "§2"
+        };
+
+        for (int index = 0; index < text.length(); index++) {
+            char character = text.charAt(index);
+            if (character == '§') {
+                result.append(character);
+                if (index + 1 < text.length()) {
+                    result.append(text.charAt(index + 1));
+                    index++;
                 }
                 continue;
             }
 
-            // 计算波浪偏移
-            double offset = Math.sin((tick + i * 0.5) * 0.3) * amplitude;
-            int colorIndex = (int) ((offset + amplitude) / (2.0 * amplitude) * (colors.length - 1));
+            double offset = Math.sin((tick + index * 0.5) * 0.3) * amplitude;
+            double normalized = (offset + amplitude) / (2.0 * amplitude);
+            int colorIndex = (int) Math.round(normalized * (colors.length - 1));
             colorIndex = Math.max(0, Math.min(colors.length - 1, colorIndex));
 
-            sb.append(colors[colorIndex]).append(c);
+            result.append(colors[colorIndex]).append(character);
         }
-        return sb.toString();
+        return result.toString();
     }
 
-    /**
-     * 生成帧列表（用于初始化）。
-     */
     private static List<String> generateFrames(String text, int amplitude, int speed) {
         List<String> frames = new ArrayList<>();
-        for (int i = 0; i < 20; i++) {
-            frames.add(generateWaveText(text, amplitude, i * speed));
+        for (int frame = 0; frame < 20; frame++) {
+            frames.add(generateWaveText(text, amplitude, frame * speed));
         }
         return frames;
+    }
+
+    private static int normalizeAmplitude(int amplitude) {
+        return Math.max(1, Math.abs(amplitude));
+    }
+
+    private static int normalizeSpeed(int speed) {
+        return Math.max(1, speed);
     }
 }

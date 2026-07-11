@@ -15,9 +15,13 @@ public class ColorsAnimation extends TextAnimation {
     private int tick;
 
     public ColorsAnimation(String baseText, int speed) {
-        super(AnimationType.COLORS, generateFrames(baseText, speed), speed);
-        this.baseText = baseText;
-        this.speed = speed;
+        super(
+                AnimationType.COLORS,
+                generateFrames(baseText, normalizeSpeed(speed)),
+                normalizeSpeed(speed)
+        );
+        this.baseText = baseText != null ? baseText : "";
+        this.speed = normalizeSpeed(speed);
         this.tick = 0;
     }
 
@@ -29,50 +33,58 @@ public class ColorsAnimation extends TextAnimation {
 
     @Override
     public String getCurrentFrame() {
-        if (baseText == null || baseText.isEmpty()) return "";
+        if (baseText.isEmpty()) return "";
         return generateColorsText(baseText, tick);
     }
 
-    /**
-     * 生成颜色循环文本。
-     */
     private static String generateColorsText(String text, int tick) {
-        String[] colors = {"§4", "§c", "§6", "§e", "§2", "§a", "§b", "§3", "§9", "§1", "§5", "§d"};
-        int colorOffset = tick / 2;
+        if (text == null || text.isEmpty()) return "";
 
-        StringBuilder sb = new StringBuilder();
-        int colorIndex = 0;
+        String[] colors = {
+                "§4", "§c", "§6", "§e", "§2", "§a",
+                "§b", "§3", "§9", "§1", "§5", "§d"
+        };
+        int colorOffset = Math.floorDiv(tick, 2);
 
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c == '§') {
-                sb.append(c);
-                if (i + 1 < text.length()) {
-                    sb.append(text.charAt(i + 1));
-                    i++;
+        StringBuilder result = new StringBuilder();
+        int visibleCharacterIndex = 0;
+
+        for (int index = 0; index < text.length(); index++) {
+            char character = text.charAt(index);
+            if (character == '§') {
+                result.append(character);
+                if (index + 1 < text.length()) {
+                    result.append(text.charAt(index + 1));
+                    index++;
                 }
                 continue;
             }
 
-            if (!Character.isWhitespace(c)) {
-                int idx = (colorIndex + colorOffset) % colors.length;
-                sb.append(colors[idx]).append(c);
-                colorIndex++;
-            } else {
-                sb.append(c);
+            if (Character.isWhitespace(character)) {
+                result.append(character);
+                continue;
             }
+
+            int colorIndex = Math.floorMod(
+                    visibleCharacterIndex + colorOffset,
+                    colors.length
+            );
+            result.append(colors[colorIndex]).append(character);
+            visibleCharacterIndex++;
         }
-        return sb.toString();
+
+        return result.toString();
     }
 
-    /**
-     * 生成帧列表（用于初始化）。
-     */
     private static List<String> generateFrames(String text, int speed) {
         List<String> frames = new ArrayList<>();
-        for (int i = 0; i < 24; i++) {
-            frames.add(generateColorsText(text, i * speed));
+        for (int frame = 0; frame < 24; frame++) {
+            frames.add(generateColorsText(text, frame * speed));
         }
         return frames;
+    }
+
+    private static int normalizeSpeed(int speed) {
+        return Math.max(1, speed);
     }
 }

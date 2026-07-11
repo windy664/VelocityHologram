@@ -17,10 +17,14 @@ public class ScrollAnimation extends TextAnimation {
     private int position;
 
     public ScrollAnimation(String baseText, int width, int speed) {
-        super(AnimationType.SCROLL, generateFrames(baseText, width, speed), speed);
-        this.baseText = baseText;
-        this.width = width;
-        this.speed = speed;
+        super(
+                AnimationType.SCROLL,
+                generateFrames(baseText, normalizeWidth(width)),
+                normalizeSpeed(speed)
+        );
+        this.baseText = baseText != null ? baseText : "";
+        this.width = normalizeWidth(width);
+        this.speed = normalizeSpeed(speed);
         this.tick = 0;
         this.position = 0;
     }
@@ -28,51 +32,61 @@ public class ScrollAnimation extends TextAnimation {
     @Override
     public boolean tick() {
         tick++;
-        if (tick % speed == 0) {
-            position++;
-            return true;
+        if (tick % speed != 0) {
+            return false;
         }
-        return false;
+
+        position++;
+        return true;
     }
 
     @Override
     public String getCurrentFrame() {
-        if (baseText == null || baseText.isEmpty()) return "";
+        if (baseText.isEmpty()) return " ".repeat(width);
         return generateScrollText(baseText, width, position);
     }
 
-    /**
-     * 生成滚动文本。
-     * <p>文字在固定宽度内滚动。
-     */
     private static String generateScrollText(String text, int width, int position) {
-        // 添加空白填充
-        String padded = " ".repeat(width) + text + " ".repeat(width);
+        int normalizedWidth = normalizeWidth(width);
+        String safeText = text != null ? text : "";
+        String padded = " ".repeat(normalizedWidth)
+                + safeText
+                + " ".repeat(normalizedWidth);
+
         int totalLength = padded.length();
-
-        // 计算滚动位置
-        int start = position % totalLength;
-        int end = Math.min(start + width, totalLength);
-
-        // 处理循环
-        if (end > totalLength) {
-            return padded.substring(start) + padded.substring(0, end - totalLength);
+        if (totalLength == 0) {
+            return "";
         }
 
-        return padded.substring(start, end);
+        int start = Math.floorMod(position, totalLength);
+        StringBuilder result = new StringBuilder(normalizedWidth);
+
+        for (int index = 0; index < normalizedWidth; index++) {
+            result.append(padded.charAt((start + index) % totalLength));
+        }
+
+        return result.toString();
     }
 
-    /**
-     * 生成帧列表（用于初始化）。
-     */
-    private static List<String> generateFrames(String text, int width, int speed) {
-        List<String> frames = new ArrayList<>();
-        String padded = " ".repeat(width) + text + " ".repeat(width);
-        int totalLength = padded.length();
+    private static List<String> generateFrames(String text, int width) {
+        int normalizedWidth = normalizeWidth(width);
+        String safeText = text != null ? text : "";
+        String padded = " ".repeat(normalizedWidth)
+                + safeText
+                + " ".repeat(normalizedWidth);
 
-        for (int i = 0; i < totalLength; i += speed) {
-            frames.add(generateScrollText(text, width, i));
+        List<String> frames = new ArrayList<>();
+        for (int position = 0; position < padded.length(); position++) {
+            frames.add(generateScrollText(safeText, normalizedWidth, position));
         }
         return frames;
+    }
+
+    private static int normalizeWidth(int width) {
+        return Math.max(1, width);
+    }
+
+    private static int normalizeSpeed(int speed) {
+        return Math.max(1, speed);
     }
 }

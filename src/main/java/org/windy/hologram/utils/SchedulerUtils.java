@@ -2,11 +2,12 @@ package org.windy.hologram.utils;
 
 import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.scheduler.ScheduledTask;
-import com.velocitypowered.api.scheduler.Scheduler;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 调度器工具类。
@@ -17,8 +18,8 @@ public final class SchedulerUtils {
     private static ProxyServer proxy;
     private static Object plugin;
 
-    // 任务注册表
     private static final Map<String, ScheduledTask> TASKS = new ConcurrentHashMap<>();
+    private static final AtomicLong TASK_SEQUENCE = new AtomicLong();
 
     private SchedulerUtils() {}
 
@@ -34,7 +35,7 @@ public final class SchedulerUtils {
      * 运行同步任务。
      */
     public static void runSync(Runnable task) {
-        if (proxy == null || plugin == null) return;
+        if (proxy == null || plugin == null || task == null) return;
         proxy.getScheduler().buildTask(plugin, task).schedule();
     }
 
@@ -42,45 +43,64 @@ public final class SchedulerUtils {
      * 运行异步任务。
      */
     public static void runAsync(Runnable task) {
-        if (proxy == null || plugin == null) return;
+        if (proxy == null || plugin == null || task == null) return;
         proxy.getScheduler().buildTask(plugin, task).schedule();
     }
 
     /**
      * 延迟运行任务。
      *
-     * @param task     任务
-     * @param delay    延迟时间
-     * @param unit     时间单位
-     * @return 任务ID
+     * @param task  任务
+     * @param delay 延迟时间
+     * @param unit  时间单位
+     * @return 任务 ID
      */
     public static String runDelayed(Runnable task, long delay, TimeUnit unit) {
-        if (proxy == null || plugin == null) return null;
+        if (proxy == null || plugin == null || task == null || unit == null) return null;
 
         String taskId = generateTaskId();
-        ScheduledTask scheduledTask = proxy.getScheduler().buildTask(plugin, task)
-                .delay(delay, unit)
+        AtomicBoolean completed = new AtomicBoolean(false);
+
+        Runnable wrappedTask = () -> {
+            try {
+                task.run();
+            } finally {
+                completed.set(true);
+                TASKS.remove(taskId);
+            }
+        };
+
+        ScheduledTask scheduledTask = proxy.getScheduler()
+                .buildTask(plugin, wrappedTask)
+                .delay(Math.max(0, delay), unit)
                 .schedule();
 
         TASKS.put(taskId, scheduledTask);
+
+        if (completed.get()) {
+            TASKS.remove(taskId, scheduledTask);
+        }
+
         return taskId;
     }
 
     /**
      * 运行重复任务。
      *
-     * @param task     任务
-     * @param delay    初始延迟
-     * @param period   重复间隔
-     * @param unit     时间单位
-     * @return 任务ID
+     * @param task   任务
+     * @param delay  初始延迟
+     * @param period 重复间隔
+     * @param unit   时间单位
+     * @return 任务 ID
      */
     public static String runRepeating(Runnable task, long delay, long period, TimeUnit unit) {
-        if (proxy == null || plugin == null) return null;
+        if (proxy == null || plugin == null || task == null || unit == null) return null;
+        if (period <= 0) return null;
 
         String taskId = generateTaskId();
-        ScheduledTask scheduledTask = proxy.getScheduler().buildTask(plugin, task)
-                .delay(delay, unit)
+        ScheduledTask scheduledTask = proxy.getScheduler()
+                .buildTask(plugin, task)
+                .delay(Math.max(0, delay), unit)
                 .repeat(period, unit)
                 .schedule();
 
@@ -91,13 +111,19 @@ public final class SchedulerUtils {
     /**
      * 运行重复任务（tick 为单位）。
      *
-     * @param task       任务
-     * @param delayTicks 初始延迟（tick）
+     * @param task        任务
+     * @param delayTicks  初始延迟（tick）
      * @param periodTicks 重复间隔（tick）
-     * @return 任务ID
+     * @return 任务 ID
      */
     public static String runRepeatingTicks(Runnable task, int delayTicks, int periodTicks) {
-        return runRepeating(task, delayTicks * 50L, periodTicks * 50L, TimeUnit.MILLISECONDS);
+        if (periodTicks <= 0) return null;
+        return runRepeating(
+                task,
+                Math.max(0, delayTicks) * 50L,
+                periodTicks * 50L,
+                TimeUnit.MILLISECONDS
+        );
     }
 
     /**
@@ -158,6 +184,6 @@ public final class SchedulerUtils {
     }
 
     private static String generateTaskId() {
-        return "task_" + System.currentTimeMillis() + "_" + TASKS.size();
+        return "task_" + System.currentTimeMillis() + "_" + TASK_SEQUENCE.incrementAndGet();
     }
 }

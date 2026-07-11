@@ -1,6 +1,8 @@
 package org.windy.hologram.animation;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 文本动画。
@@ -10,14 +12,14 @@ public class TextAnimation {
 
     private final AnimationType type;
     private final List<String> frames;
-    private final int intervalTicks; // 每帧间隔（tick）
+    private final int intervalTicks;
     private int currentFrame;
     private int tickCounter;
 
     public TextAnimation(AnimationType type, List<String> frames, int intervalTicks) {
-        this.type = type;
-        this.frames = frames;
-        this.intervalTicks = intervalTicks;
+        this.type = type != null ? type : AnimationType.CYCLE;
+        this.frames = frames != null ? frames : Collections.emptyList();
+        this.intervalTicks = Math.max(1, intervalTicks);
         this.currentFrame = 0;
         this.tickCounter = 0;
     }
@@ -27,7 +29,7 @@ public class TextAnimation {
      */
     public String getCurrentFrame() {
         if (frames.isEmpty()) return "";
-        return frames.get(currentFrame % frames.size());
+        return frames.get(Math.floorMod(currentFrame, frames.size()));
     }
 
     /**
@@ -39,12 +41,30 @@ public class TextAnimation {
         if (frames.size() <= 1) return false;
 
         tickCounter++;
-        if (tickCounter >= intervalTicks) {
-            tickCounter = 0;
-            currentFrame = (currentFrame + 1) % frames.size();
-            return true;
+        if (tickCounter < intervalTicks) {
+            return false;
         }
-        return false;
+
+        tickCounter = 0;
+
+        if (type == AnimationType.RANDOM) {
+            int previousFrame = currentFrame;
+            currentFrame = selectDifferentRandomFrame(previousFrame);
+            return currentFrame != previousFrame;
+        }
+
+        currentFrame = (currentFrame + 1) % frames.size();
+        return true;
+    }
+
+    private int selectDifferentRandomFrame(int previousFrame) {
+        if (frames.size() <= 1) return previousFrame;
+
+        int candidate = ThreadLocalRandom.current().nextInt(frames.size() - 1);
+        if (candidate >= previousFrame) {
+            candidate++;
+        }
+        return candidate;
     }
 
     /**
@@ -55,29 +75,29 @@ public class TextAnimation {
         tickCounter = 0;
     }
 
-    public AnimationType getType() { return type; }
-    public List<String> getFrames() { return frames; }
-    public int getIntervalTicks() { return intervalTicks; }
+    public AnimationType getType() {
+        return type;
+    }
+
+    public List<String> getFrames() {
+        return Collections.unmodifiableList(frames);
+    }
+
+    public int getIntervalTicks() {
+        return intervalTicks;
+    }
 
     /**
      * 动画类型。
      */
     public enum AnimationType {
-        /** 帧循环：依次显示每一帧 */
         CYCLE,
-        /** 随机：随机选择一帧 */
         RANDOM,
-        /** 打字机：逐字显示 */
         TYPEWRITER,
-        /** 渐变：颜色渐变 */
         GRADIENT,
-        /** 波浪：正弦波颜色变化 */
         WAVE,
-        /** 燃烧：逐行燃烧消失 */
         BURN,
-        /** 滚动：文字在固定宽度内滚动 */
         SCROLL,
-        /** 颜色循环：文字颜色循环变化 */
         COLORS
     }
 }

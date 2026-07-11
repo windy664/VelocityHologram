@@ -2,22 +2,29 @@ package org.windy.hologram.animation;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 燃烧动画。
  * <p>语法：{burn:duration|文本}
- * <p>文字从上到下逐行"燃烧"消失，使用随机字符模拟火焰。
+ * <p>文字逐步变为随机火焰颜色。
  */
 public class BurnAnimation extends TextAnimation {
+
+    private static final char[] FIRE_COLORS = {'c', '6', 'e', 'f'};
 
     private final String baseText;
     private final int duration;
     private int tick;
 
     public BurnAnimation(String baseText, int duration) {
-        super(AnimationType.BURN, generateFrames(baseText, duration), 1);
-        this.baseText = baseText;
-        this.duration = duration;
+        super(
+                AnimationType.BURN,
+                generateFrames(baseText, normalizeDuration(duration)),
+                1
+        );
+        this.baseText = baseText != null ? baseText : "";
+        this.duration = normalizeDuration(duration);
         this.tick = 0;
     }
 
@@ -29,50 +36,75 @@ public class BurnAnimation extends TextAnimation {
 
     @Override
     public String getCurrentFrame() {
-        if (baseText == null || baseText.isEmpty()) return "";
+        if (baseText.isEmpty()) return "";
         return generateBurnText(baseText, duration, tick);
     }
 
-    /**
-     * 生成燃烧文本。
-     * <p>文字从上到下逐行"燃烧"消失。
-     */
     private static String generateBurnText(String text, int duration, int tick) {
-        int burnLength = (int) ((tick % (duration * 2)) / (double) (duration * 2) * text.length());
+        if (text == null || text.isEmpty()) return "";
 
-        StringBuilder sb = new StringBuilder();
-        String fireChars = "§c§6§e§f";
+        int normalizedDuration = normalizeDuration(duration);
+        int cycleLength = normalizedDuration * 2;
+        int cycleTick = Math.floorMod(tick, cycleLength);
+        int visibleCharacters = countVisibleCharacters(text);
+        int burnLength = (int) (
+                cycleTick / (double) cycleLength * visibleCharacters
+        );
 
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c == '§') {
-                sb.append(c);
-                if (i + 1 < text.length()) {
-                    sb.append(text.charAt(i + 1));
-                    i++;
+        StringBuilder result = new StringBuilder();
+        int visibleIndex = 0;
+
+        for (int index = 0; index < text.length(); index++) {
+            char character = text.charAt(index);
+            if (character == '§') {
+                result.append(character);
+                if (index + 1 < text.length()) {
+                    result.append(text.charAt(index + 1));
+                    index++;
                 }
                 continue;
             }
 
-            if (i < burnLength) {
-                // 已燃烧部分：使用随机火焰字符
-                char fireChar = fireChars.charAt((int) (Math.random() * fireChars.length()));
-                sb.append("§").append(fireChar).append(c);
-            } else {
-                sb.append(c);
+            if (visibleIndex < burnLength && !Character.isWhitespace(character)) {
+                char color = FIRE_COLORS[
+                        ThreadLocalRandom.current().nextInt(FIRE_COLORS.length)
+                ];
+                result.append('§').append(color);
             }
+
+            result.append(character);
+            visibleIndex++;
         }
-        return sb.toString();
+
+        return result.toString();
     }
 
-    /**
-     * 生成帧列表（用于初始化）。
-     */
-    private static List<String> generateFrames(String text, int duration) {
-        List<String> frames = new ArrayList<>();
-        for (int i = 0; i < duration * 2; i++) {
-            frames.add(generateBurnText(text, duration, i));
+    private static int countVisibleCharacters(String text) {
+        int count = 0;
+
+        for (int index = 0; index < text.length(); index++) {
+            if (text.charAt(index) == '§' && index + 1 < text.length()) {
+                index++;
+                continue;
+            }
+            count++;
         }
+
+        return count;
+    }
+
+    private static List<String> generateFrames(String text, int duration) {
+        int normalizedDuration = normalizeDuration(duration);
+        List<String> frames = new ArrayList<>();
+
+        for (int frame = 0; frame < normalizedDuration * 2; frame++) {
+            frames.add(generateBurnText(text, normalizedDuration, frame));
+        }
+
         return frames;
+    }
+
+    private static int normalizeDuration(int duration) {
+        return Math.max(1, duration);
     }
 }

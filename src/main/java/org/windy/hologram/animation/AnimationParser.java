@@ -9,8 +9,8 @@ import java.util.List;
  *
  * <p>语法：
  * <ul>
- *   <li>{@code {cycle:20|帧1|帧2|帧3}} - 每20tick循环</li>
- *   <li>{@code {random:40|帧1|帧2|帧3}} - 每40tick随机</li>
+ *   <li>{@code {cycle:20|帧1|帧2|帧3}} - 每 20 tick 循环</li>
+ *   <li>{@code {random:40|帧1|帧2|帧3}} - 每 40 tick 随机</li>
  *   <li>{@code {typewriter:5|完整文本}} - 打字机效果</li>
  * </ul>
  */
@@ -23,10 +23,14 @@ public class AnimationParser {
      */
     public static boolean hasAnimation(String text) {
         if (text == null) return false;
-        return text.contains("{cycle:") || text.contains("{random:")
-                || text.contains("{typewriter:") || text.contains("{wave:")
-                || text.contains("{burn:") || text.contains("{scroll:")
-                || text.contains("{colors:") || GradientParser.hasGradient(text);
+        return text.contains("{cycle:")
+                || text.contains("{random:")
+                || text.contains("{typewriter:")
+                || text.contains("{wave:")
+                || text.contains("{burn:")
+                || text.contains("{scroll:")
+                || text.contains("{colors:")
+                || GradientParser.hasGradient(text);
     }
 
     /**
@@ -37,37 +41,24 @@ public class AnimationParser {
     public static TextAnimation parse(String text) {
         if (text == null || text.isEmpty()) return null;
 
-        // 解析 {cycle:interval|frame1|frame2|...}
         if (text.startsWith("{cycle:") && text.endsWith("}")) {
             return parseCycle(text);
         }
-
-        // 解析 {random:interval|frame1|frame2|...}
         if (text.startsWith("{random:") && text.endsWith("}")) {
             return parseRandom(text);
         }
-
-        // 解析 {typewriter:delay|text}
         if (text.startsWith("{typewriter:") && text.endsWith("}")) {
             return parseTypewriter(text);
         }
-
-        // 解析 {wave:amplitude|speed|text}
         if (text.startsWith("{wave:") && text.endsWith("}")) {
             return parseWave(text);
         }
-
-        // 解析 {burn:duration|text}
         if (text.startsWith("{burn:") && text.endsWith("}")) {
             return parseBurn(text);
         }
-
-        // 解析 {scroll:width|speed|text}
         if (text.startsWith("{scroll:") && text.endsWith("}")) {
             return parseScroll(text);
         }
-
-        // 解析 {colors:speed|text}
         if (text.startsWith("{colors:") && text.endsWith("}")) {
             return parseColors(text);
         }
@@ -81,14 +72,15 @@ public class AnimationParser {
         if (parts.length < 2) return null;
 
         try {
-            int interval = Integer.parseInt(parts[0].trim());
-            String[] frames = parts[1].split("\\|");
-            List<String> frameList = new ArrayList<>();
-            for (String frame : frames) {
-                frameList.add(frame.trim());
-            }
-            return new TextAnimation(TextAnimation.AnimationType.CYCLE, frameList, interval);
-        } catch (NumberFormatException e) {
+            int interval = requirePositive(parts[0]);
+            List<String> frames = parseFrames(parts[1]);
+            if (frames.isEmpty()) return null;
+            return new TextAnimation(
+                    TextAnimation.AnimationType.CYCLE,
+                    frames,
+                    interval
+            );
+        } catch (IllegalArgumentException exception) {
             return null;
         }
     }
@@ -99,14 +91,15 @@ public class AnimationParser {
         if (parts.length < 2) return null;
 
         try {
-            int interval = Integer.parseInt(parts[0].trim());
-            String[] frames = parts[1].split("\\|");
-            List<String> frameList = new ArrayList<>();
-            for (String frame : frames) {
-                frameList.add(frame.trim());
-            }
-            return new TextAnimation(TextAnimation.AnimationType.RANDOM, frameList, interval);
-        } catch (NumberFormatException e) {
+            int interval = requirePositive(parts[0]);
+            List<String> frames = parseFrames(parts[1]);
+            if (frames.isEmpty()) return null;
+            return new TextAnimation(
+                    TextAnimation.AnimationType.RANDOM,
+                    frames,
+                    interval
+            );
+        } catch (IllegalArgumentException exception) {
             return null;
         }
     }
@@ -117,19 +110,22 @@ public class AnimationParser {
         if (parts.length < 2) return null;
 
         try {
-            int delay = Integer.parseInt(parts[0].trim());
+            int delay = requirePositive(parts[0]);
             String fullText = parts[1];
+            if (fullText.isEmpty()) return null;
 
-            // 生成逐字帧
             List<String> frames = new ArrayList<>();
-            for (int i = 1; i <= fullText.length(); i++) {
-                frames.add(fullText.substring(0, i));
+            for (int index = 1; index <= fullText.length(); index++) {
+                frames.add(fullText.substring(0, index));
             }
-            // 最后一帧停留
             frames.add(fullText);
 
-            return new TextAnimation(TextAnimation.AnimationType.TYPEWRITER, frames, delay);
-        } catch (NumberFormatException e) {
+            return new TextAnimation(
+                    TextAnimation.AnimationType.TYPEWRITER,
+                    frames,
+                    delay
+            );
+        } catch (IllegalArgumentException exception) {
             return null;
         }
     }
@@ -140,11 +136,10 @@ public class AnimationParser {
         if (parts.length < 3) return null;
 
         try {
-            int amplitude = Integer.parseInt(parts[0].trim());
-            int speed = Integer.parseInt(parts[1].trim());
-            String baseText = parts[2];
-            return new WaveAnimation(baseText, amplitude, speed);
-        } catch (NumberFormatException e) {
+            int amplitude = requirePositive(parts[0]);
+            int speed = requirePositive(parts[1]);
+            return new WaveAnimation(parts[2], amplitude, speed);
+        } catch (IllegalArgumentException exception) {
             return null;
         }
     }
@@ -155,10 +150,9 @@ public class AnimationParser {
         if (parts.length < 2) return null;
 
         try {
-            int duration = Integer.parseInt(parts[0].trim());
-            String baseText = parts[1];
-            return new BurnAnimation(baseText, duration);
-        } catch (NumberFormatException e) {
+            int duration = requirePositive(parts[0]);
+            return new BurnAnimation(parts[1], duration);
+        } catch (IllegalArgumentException exception) {
             return null;
         }
     }
@@ -169,11 +163,10 @@ public class AnimationParser {
         if (parts.length < 3) return null;
 
         try {
-            int width = Integer.parseInt(parts[0].trim());
-            int speed = Integer.parseInt(parts[1].trim());
-            String baseText = parts[2];
-            return new ScrollAnimation(baseText, width, speed);
-        } catch (NumberFormatException e) {
+            int width = requirePositive(parts[0]);
+            int speed = requirePositive(parts[1]);
+            return new ScrollAnimation(parts[2], width, speed);
+        } catch (IllegalArgumentException exception) {
             return null;
         }
     }
@@ -184,11 +177,35 @@ public class AnimationParser {
         if (parts.length < 2) return null;
 
         try {
-            int speed = Integer.parseInt(parts[0].trim());
-            String baseText = parts[1];
-            return new ColorsAnimation(baseText, speed);
-        } catch (NumberFormatException e) {
+            int speed = requirePositive(parts[0]);
+            return new ColorsAnimation(parts[1], speed);
+        } catch (IllegalArgumentException exception) {
             return null;
         }
+    }
+
+    private static List<String> parseFrames(String input) {
+        List<String> frames = new ArrayList<>();
+
+        for (String frame : input.split("\\|", -1)) {
+            frames.add(frame.trim());
+        }
+
+        return frames;
+    }
+
+    private static int requirePositive(String value) {
+        int parsed;
+        try {
+            parsed = Integer.parseInt(value.trim());
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException("参数必须是整数", exception);
+        }
+
+        if (parsed <= 0) {
+            throw new IllegalArgumentException("参数必须大于零");
+        }
+
+        return parsed;
     }
 }
