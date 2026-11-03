@@ -1,3 +1,9 @@
+<div align="center">
+
+<img src="assets/banner.svg" alt="VelocityHologram" width="100%">
+
+</div>
+
 # VelocityHologram
 
 [![Build](https://github.com/windy664/VelocityHologram/actions/workflows/gradle.yml/badge.svg)](https://github.com/windy664/VelocityHologram/actions)
